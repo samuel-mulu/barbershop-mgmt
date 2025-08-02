@@ -6,9 +6,7 @@
       "dest": "/"
     }
   ],
-  "env": {
-    "MONGODB_URI": "@mongodb_uri"
-  },
+
   "functions": {
     "app/api/**/*.ts": {
       "maxDuration": 30
