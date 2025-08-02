@@ -36,7 +36,7 @@ interface ServiceOperation {
 }
 
 export default function BarberDashboard() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<{ name: string; branchId?: string; _id?: string } | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [branchName, setBranchName] = useState<string>("");
 

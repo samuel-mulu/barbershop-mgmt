@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Scissors, Users, BarChart3, Shield, Sparkles, CheckCircle } from "lucide-react";
+import { ArrowRight, Scissors, Users, BarChart3, Sparkles, CheckCircle } from "lucide-react";
 import SplashScreen from "./components/SplashScreen";
 import { getUserFromLocalStorage } from "@/utils/auth";
 

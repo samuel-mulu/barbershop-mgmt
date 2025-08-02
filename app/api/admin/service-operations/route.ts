@@ -108,9 +108,10 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const branch = searchParams.get("branch");
 
-    let query: Record<string, unknown> = {};
+    const query: Record<string, unknown> = {};
     
     // Always get operations for the current admin user
     query._id = decoded.userId;

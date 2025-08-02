@@ -45,7 +45,7 @@ export async function GET(req: Request) {
     await connectDB();
     const { searchParams } = new URL(req.url);
     const ownerId = searchParams.get("ownerId");
-    const branches;
+    let branches;
     
     if (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) {
       branches = await Branch.find({ ownerId });

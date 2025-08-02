@@ -101,7 +101,7 @@ export default function StaffSection({
   );
 
   // Group users by branch with error handling
-  const usersByBranch = Array.isArray(allUsers) ? allUsers.reduce((acc: any, user: User) => {
+      const usersByBranch = Array.isArray(allUsers) ? allUsers.reduce((acc: any, user: User) => { // eslint-disable-line @typescript-eslint/no-explicit-any
     if (!acc[user.branchId]) {
       acc[user.branchId] = [];
     }

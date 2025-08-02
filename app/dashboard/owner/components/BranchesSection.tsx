@@ -72,6 +72,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
   const [creating, setCreating] = useState(false);
   const [expandedBranches, setExpandedBranches] = useState<Set<string>>(new Set());
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingService, setEditingService] = useState<{branchId: string, serviceIndex: number, service: any} | null>(null);
 
   // Fetch all branches for this owner
@@ -87,7 +88,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
   );
 
   // Group users by branch with error handling
-  const usersByBranch = Array.isArray(allUsers) ? allUsers.reduce((acc: any, user: User) => {
+      const usersByBranch = Array.isArray(allUsers) ? allUsers.reduce((acc: any, user: User) => { // eslint-disable-line @typescript-eslint/no-explicit-any
     if (!acc[user.branchId]) {
       acc[user.branchId] = [];
     }
@@ -131,7 +132,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
     setExpandedServices(newExpanded);
   };
 
-  const handleEditService = (branchId: string, serviceIndex: number, service: any) => {
+  const handleEditService = (branchId: string, serviceIndex: number, service: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
     setEditingService({ branchId, serviceIndex, service });
   };
 

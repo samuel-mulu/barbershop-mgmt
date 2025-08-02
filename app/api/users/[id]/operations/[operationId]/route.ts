@@ -25,7 +25,7 @@ export async function PATCH(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const result;
+    let result;
 
     if (user.role === "admin") {
       // Update adminServiceOperations using array index

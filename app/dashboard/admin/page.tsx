@@ -58,7 +58,7 @@ interface ServiceOperation {
 }
 
 export default function AdminDashboard() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<{ name: string; branchId?: string } | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [branchName, setBranchName] = useState<string>("");
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
@@ -112,14 +112,14 @@ export default function AdminDashboard() {
   const safeServiceOperations = Array.isArray(serviceOperations) ? serviceOperations.filter(op => op.status === "pending") : [];
   
   // Filter workers by role
-  const barbers = workers.filter((worker: any) => worker.role === "barber");
-  const washers = workers.filter((worker: any) => worker.role === "washer");
+  const barbers = workers.filter((worker: Record<string, unknown>) => worker.role === "barber");
+  const washers = workers.filter((worker: Record<string, unknown>) => worker.role === "washer");
 
   // Add selected service to the list
   const handleAddService = () => {
     if (!selectedServiceId) return;
 
-    const service = services.find((s: any) => s.name === selectedServiceId);
+    const service = services.find((s: Record<string, unknown>) => s.name === selectedServiceId);
     if (!service) return;
 
     // Check if service has barber price and barber is selected
@@ -131,8 +131,8 @@ export default function AdminDashboard() {
     // Check if at least one worker is selected
     if (!selectedBarberId && !selectedWasherId) return;
 
-    const barber = selectedBarberId ? barbers.find((b: any) => b._id === selectedBarberId) : null;
-    const washer = selectedWasherId ? washers.find((w: any) => w._id === selectedWasherId) : null;
+    const barber = selectedBarberId ? barbers.find((b: Record<string, unknown>) => b._id === selectedBarberId) : null;
+    const washer = selectedWasherId ? washers.find((w: Record<string, unknown>) => w._id === selectedWasherId) : null;
 
     // Validate that we have workers for the required services
     if (service.barberPrice && !barber) return;
@@ -164,7 +164,7 @@ export default function AdminDashboard() {
 
   // Helper functions for service selection
   const getSelectedService = () => {
-    return services.find((s: any) => s.name === selectedServiceId);
+    return services.find((s: any) => s.name === selectedServiceId); // eslint-disable-next-line @typescript-eslint/no-explicit-any
   };
 
   const shouldShowBarberDropdown = () => {
@@ -198,7 +198,8 @@ export default function AdminDashboard() {
     try {
       // Convert selected services to service operations for workers
       const workerServiceOperations = selectedServices.map(service => {
-        let operationData: any = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let operationData: any = {
           name: service.serviceName
         };
         
@@ -217,7 +218,8 @@ export default function AdminDashboard() {
       });
 
       // Convert selected services to admin service operations
-      const adminServiceOperations: any[] = [];
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const adminServiceOperations: any[] = [];
       
       selectedServices.forEach(service => {
         if (service.barberId && service.barberPrice) {
@@ -395,7 +397,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {safeServiceOperations.map((operation: any, index: number) => (
+                    {safeServiceOperations.map((operation: any, index: number) => ( // eslint-disable-line @typescript-eslint/no-explicit-any
                       <tr key={operation._id || `operation_${index}_${Date.now()}`}>
                         <td className="font-medium">{operation.name || 'N/A'}</td>
                         <td>
@@ -446,7 +448,7 @@ export default function AdminDashboard() {
                     className="form-select"
                   >
                     <option value="">Select Service</option>
-                    {services.map((service: any, index: number) => (
+                    {services.map((service: any, index: number) => ( // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       <option key={service.name || index} value={service.name}>
                         {service.name}
                       </option>
@@ -466,7 +468,7 @@ export default function AdminDashboard() {
                       className="form-select"
                     >
                       <option value="">Select Barber</option>
-                      {barbers.map((barber: any) => (
+                      {barbers.map((barber: any) => ( // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         <option key={barber._id || barber.name} value={barber._id}>
                           {barber.name}
                         </option>
@@ -487,7 +489,7 @@ export default function AdminDashboard() {
                       className="form-select"
                     >
                       <option value="">Select Washer</option>
-                      {washers.map((washer: any) => (
+                      {washers.map((washer: any) => ( // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         <option key={washer._id || washer.name} value={washer._id}>
                           {washer.name}
                         </option>

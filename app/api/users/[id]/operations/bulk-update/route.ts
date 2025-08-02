@@ -79,8 +79,9 @@ export async function PATCH(
       updatedCount,
       status 
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("PATCH /api/users/[id]/operations/bulk-update error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 
