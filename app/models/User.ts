@@ -35,7 +35,7 @@ const userSchema = new mongoose.Schema({
 // Ensure adminServiceOperations field exists for existing documents
 userSchema.pre('save', function(next) {
   if (this.role === 'admin' && !this.adminServiceOperations) {
-    (this as any).adminServiceOperations = [];
+    (this as mongoose.Document & { adminServiceOperations?: any[] }).adminServiceOperations = [];
   }
   next();
 });
