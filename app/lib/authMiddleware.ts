@@ -16,7 +16,7 @@ export const requireRole = (allowedRoles: string[]) => {
     const token = authHeader.split(" ")[1];
 
     try {
-      const decoded: any = jwt.verify(token, JWT_SECRET);
+      const decoded = jwt.verify(token, JWT_SECRET) as { _id: string; email: string; role: string };
       const user = await User.findById(decoded._id);
 
       if (!user || !allowedRoles.includes(user.role)) {
@@ -24,7 +24,7 @@ export const requireRole = (allowedRoles: string[]) => {
       }
 
       return { user };
-    } catch (err) {
+    } catch {
       return { error: "Unauthorized", status: 401 };
     }
   };

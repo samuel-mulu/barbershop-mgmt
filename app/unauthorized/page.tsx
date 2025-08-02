@@ -25,7 +25,7 @@ export default function UnauthorizedPage() {
         </div>
         <h1 className="text-2xl font-bold text-gray-800 mb-2">Unauthorized Access</h1>
         <p className="text-gray-600 mb-4">
-          You don't have permission to access this page. Please contact your administrator.
+          You don&apos;t have permission to access this page. Please contact your administrator.
         </p>
         <button
           onClick={() => router.push('/login')}

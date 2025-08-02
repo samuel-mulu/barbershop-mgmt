@@ -192,12 +192,12 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
       };
       
       const response = await fetch(`/api/users/${selectedUser._id}/operations/bulk-update`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify(updateData),
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`,
+            },
+            body: JSON.stringify(updateData),
       });
       
       if (!response.ok) {
@@ -208,11 +208,11 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
       console.log('Bulk update result:', result);
       
       // Clear selections and refresh
-      setSelectedOperations(new Set());
-      setExpandedOperations(new Set());
+          setSelectedOperations(new Set());
+          setExpandedOperations(new Set());
       
       // Force a re-render by updating the expanded dates
-      setExpandedDates(new Set(expandedDates));
+          setExpandedDates(new Set(expandedDates));
       
       // Force a re-render by toggling a state to trigger data refresh
       if (onBackToStaff) {
@@ -392,13 +392,13 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
     <div className="reports-container">
       {/* Back Button */}
       <div className="back-button-container">
-        <button
-          onClick={onBackToStaff}
+          <button
+            onClick={onBackToStaff}
           className="action-button secondary"
-        >
+          >
           <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Staff
-        </button>
+            Back to Staff
+          </button>
       </div>
 
       {/* User Info Card */}
@@ -416,10 +416,10 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
               <span className="user-phone">
                 <Phone className="w-3 h-3 mr-1" />
                 {selectedUser.phone}
-              </span>
-            </div>
-          </div>
+          </span>
         </div>
+      </div>
+          </div>
         <div className="user-stats">
           {viewMode === 'pending' ? (
             <div className="stat-item">
@@ -430,8 +430,8 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
             <div className="stat-item">
               <CheckCircle className="w-4 h-4" />
               <span>{getStatusDisplayName('finished')} ዝተሰረሐ: {getOperations().filter(op => op.status === 'finished').length || 0}</span>
-            </div>
-          )}
+        </div>
+      )}
         </div>
       </div>
 
@@ -440,16 +440,16 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
         {viewMode === 'pending' ? (
           // Pending Operations View
           <div className="pending-operations">
-            {selectedOperations.size > 0 && (
+      {selectedOperations.size > 0 && (
               <div className="bulk-actions">
                 <div className="bulk-info">
                   <span className="selected-count">
                     {selectedOperations.size} operation{selectedOperations.size !== 1 ? 's' : ''} selected
-                  </span>
+            </span>
                 </div>
-                <button
-                  onClick={() => handleUpdateSelectedOperations('finished')}
-                  disabled={isLoading}
+              <button
+                onClick={() => handleUpdateSelectedOperations('finished')}
+                disabled={isLoading}
                   className="action-button success large"
                 >
                   {isLoading ? (
@@ -463,9 +463,9 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                     Mark Selected as {getStatusDisplayName('finished')}
                     </>
                   )}
-                </button>
-              </div>
-            )}
+              </button>
+        </div>
+      )}
 
             {(() => {
               const operations = getOperations();
@@ -486,19 +486,19 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                 <div className="operations-list">
                   {dates.map(date => {
                     const dateOperations = groupedOperations[date];
-                    const isDateExpanded = expandedDates.has(date);
+                  const isDateExpanded = expandedDates.has(date);
                     const dateSelectedCount = dateOperations.filter((_, index) => 
                       selectedOperations.has(`${date}-${index}`)
                     ).length;
                     const isAllSelected = dateSelectedCount === dateOperations.length;
                     const totalPrice = dateOperations.reduce((sum, operation) => sum + operation.price, 0);
-
-                    return (
+                  
+                  return (
                       <div key={date} className="date-group">
                         <div className="date-header">
                           <div className="date-info">
                             <button
-                              onClick={() => toggleDateExpansion(date)}
+                        onClick={() => toggleDateExpansion(date)}
                               className="expand-button"
                             >
                               {isDateExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -508,8 +508,8 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                               <div className="date-stats">
                                 <span className="date-count">{dateOperations.length} operations</span>
                                 <span className="date-total-price">Total: {totalPrice}ብር</span>
-                              </div>
-                            </div>
+                          </div>
+                        </div>
                           </div>
                                                       <div className="date-actions">
                               <label className="select-all">
@@ -522,17 +522,17 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                 <span className="checkmark"></span>
                                 Select All
                               </label>
-                            </div>
                         </div>
-
-                        {isDateExpanded && (
+                      </div>
+                      
+                      {isDateExpanded && (
                           <div className="operations-grid">
                             {dateOperations.map((operation, index) => {
                               const operationKey = `${date}-${index}`;
-                              const isSelected = selectedOperations.has(operationKey);
+                                const isSelected = selectedOperations.has(operationKey);
                               const isExpanded = expandedOperations.has(operationKey);
-
-                              return (
+                                
+                                return (
                                 <div key={operationKey} className="operation-card">
                                   <div className="operation-header">
                                     <div className="operation-info">
@@ -556,25 +556,25 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                             <EthiopianDate dateString={operation.createdAt} showTime={true} showWeekday={false} />
                                           </span>
                                         </div>
-                                      </div>
-                                    </div>
+                                            </div>
+                                            </div>
                                                                           <div className="operation-actions">
-                                        <button
+                              <button
                                           onClick={() => toggleOperationExpansion(operationKey)}
                                           className="expand-button small"
                                         >
                                           {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                                        </button>
-                                      </div>
-                                  </div>
-
+                              </button>
+                        </div>
+                      </div>
+                      
                                   {isExpanded && (
                                     <div className="operation-details-expanded">
                                       <div className="details-grid">
                                         <div className="detail-item">
                                           <label>Service Name</label>
                                           <div>{operation.name}</div>
-                                        </div>
+                                            </div>
                                         <div className="detail-item">
                                           <label>Price</label>
                                           <div>{operation.price}ብር</div>
@@ -583,50 +583,50 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                           <label>Created At</label>
                                           <div>
                                             <EthiopianDate dateString={operation.createdAt} showTime={true} showWeekday={false} />
-                                          </div>
+                                            </div>
                                         </div>
                                         <div className="detail-item">
                                           <label>Status</label>
                                           <div className="status pending">
                                             <Clock className="w-3 h-3 mr-1" />
                                             Pending
-                                          </div>
                                         </div>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
+                                            </div>
+                                            </div>
+                                              </div>
+                                            )}
+                                            </div>
                               );
                             })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              );
+                                              </div>
+                                            )}
+                                          </div>
+                                );
+                              })}
+                    </div>
+                  );
             })()}
           </div>
         ) : (
           // Finished Operations View
           <div className="finished-operations">
-
-            {(() => {
-              const finishedOperations = getFinishedOperations();
+        
+        {(() => {
+          const finishedOperations = getFinishedOperations();
               const groupedFinished = groupFinishedOperationsByDate(finishedOperations);
               const finishedDates = Object.keys(groupedFinished);
-
+          
               if (finishedDates.length === 0) {
-                return (
+            return (
                   <div className="empty-operations">
                     <Clock className="w-16 h-16 mb-4 text-blue-400" />
                     <h3>No {getStatusDisplayName('finished')} ዝተሰረሐ</h3>
                     <p>No ዝተሰረሐ have been completed yet.</p>
-                  </div>
-                );
-              }
-
-              return (
+              </div>
+            );
+          }
+          
+          return (
                 <div className="finished-list">
                   {finishedDates.map((date, cardIndex) => {
                     const dateOperations = groupedFinished[date];
@@ -638,13 +638,13 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                       }
                       return sum;
                     }, 0) / dateOperations.length;
-
-                    return (
+                
+                return (
                       <div key={date} className="finished-card">
                         <div className="finished-header">
                           <div className="finished-info">
                             <button
-                              onClick={() => toggleFinishedCardExpansion(cardIndex)}
+                                onClick={() => toggleFinishedCardExpansion(cardIndex)}
                               className="expand-button"
                             >
                               {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -663,12 +663,12 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                 <span className="stat">
                                   <Clock className="w-3 h-3 mr-1" />
                                   {Math.floor(avgTime / (1000 * 60))} min avg
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
+                                    </span>
+                                  </div>
+                                </div>
+                                  </div>
+                                </div>
+                                
                         {isExpanded && (
                           <div className="finished-operations-list">
                             {dateOperations.map((operation, index) => (
@@ -688,25 +688,25 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                   <div className="timeline-item">
                                     <Calendar className="w-3 h-3" />
                                     <span>Created: <EthiopianDate dateString={operation.createdAt} showTime={true} showWeekday={false} /></span>
-                                  </div>
+                              </div>
                                   {operation.finishedDate && (
                                     <div className="timeline-item">
                                                                           <CheckCircle className="w-3 h-3" />
                                     <span>Finished: <EthiopianDate dateString={operation.finishedDate} showTime={true} showWeekday={false} /></span>
                                     </div>
                                   )}
-                                </div>
-                              </div>
+                                      </div>
+                                    </div>
                             ))}
-                          </div>
-                        )}
                       </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </div>
         )}
       </div>
 

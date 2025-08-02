@@ -1,5 +1,36 @@
 import mongoose from "mongoose";
 
+// Define interfaces for better type safety
+interface ServiceOperation {
+  name: string;
+  price: number;
+  originalPrice?: number;
+  status: 'pending' | 'finished';
+  createdAt: Date;
+  finishedDate?: Date;
+}
+
+interface AdminServiceOperation {
+  name: string;
+  price: number;
+  status: 'pending' | 'finished';
+  createdAt: Date;
+  finishedDate?: Date;
+  workerName: string;
+  workerRole: 'barber' | 'washer';
+  workerId: mongoose.Types.ObjectId;
+}
+
+interface UserDocument extends mongoose.Document {
+  name: string;
+  phone: string;
+  password: string;
+  role: "owner" | "admin" | "barber" | "washer" | "customer";
+  branchId?: mongoose.Types.ObjectId;
+  serviceOperations: ServiceOperation[];
+  adminServiceOperations: AdminServiceOperation[];
+}
+
 // Simple service operation schema for workers
 const serviceOperationSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -35,7 +66,7 @@ const userSchema = new mongoose.Schema({
 // Ensure adminServiceOperations field exists for existing documents
 userSchema.pre('save', function(next) {
   if (this.role === 'admin' && !this.adminServiceOperations) {
-    (this as any).adminServiceOperations = [];
+    (this as UserDocument).adminServiceOperations = [];
   }
   next();
 });

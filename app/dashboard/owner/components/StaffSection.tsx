@@ -200,7 +200,7 @@ export default function StaffSection({
             <div className="branch-badge">
               <Building2 className="w-4 h-4 mr-2" />
               {selectedBranch.name}
-                              </div>
+                  </div>
                             <button
               onClick={() => onSelectBranch(null)}
               className="back-button"
@@ -245,7 +245,7 @@ export default function StaffSection({
                                             <div className="staff-item admin">
                         <User className="w-3 h-3" />
                         <span>{adminCount} ካሸር</span>
-                      </div>
+                    </div>
                       <div className="staff-item barber">
                         <Scissors className="w-3 h-3" />
                         <span>{barberCount} ቀምቀምቲ</span>
@@ -253,7 +253,7 @@ export default function StaffSection({
                       <div className="staff-item washer">
                         <Droplets className="w-3 h-3" />
                         <span>{washerCount} ሓጸብቲ</span>
-                      </div>
+                    </div>
                   </div>
                   </div>
                   <div className="branch-action">
@@ -287,12 +287,12 @@ export default function StaffSection({
                       ) : (
                         <ChevronRight className="w-4 h-4 ml-2 cursor-pointer" />
                       )}
-                    </div>
+                                  </div>
                     <span className={`role-badge ${getRoleColor(role)}`}>
                       {getRoleDisplayName(role)}
-                    </span>
-                  </div>
-                  
+                                  </span>
+                              </div>
+                              
                   {expandedRoles[role] && (
                     <div className="users-list">
                     {users.map((user: User, index: number) => (
@@ -308,8 +308,8 @@ export default function StaffSection({
                               <span className="user-phone">
                                 <Phone className="w-3 h-3 mr-1" />
                                 {user.phone}
-                              </span>
-                            </div>
+                                                  </span>
+                                                </div>
                                                     </div>
                                                     </div>
                           <div className="user-stats">
@@ -333,19 +333,19 @@ export default function StaffSection({
                             <Eye className="w-4 h-4 mr-2" />
                             {getStatusDisplayName('pending')} Reports
                           </button>
-                          <button
+                                      <button
                             onClick={() => navigateToReports(user, 'finished')}
                             className="action-button secondary"
                           >
                             <BarChart3 className="w-4 h-4 mr-2" />
                             {getStatusDisplayName('finished')} Reports
-                          </button>
+                                      </button>
                                   </div>
                                 </div>
                     ))}
-                              </div>
-                    )}
-                  </div>
+                                                    </div>
+                                                  )}
+                                                </div>
                                         );
                                       })}
                                 </div>

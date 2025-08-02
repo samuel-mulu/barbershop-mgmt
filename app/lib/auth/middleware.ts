@@ -17,7 +17,7 @@ export function middleware(req: NextRequest) {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as any;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { role: string; _id: string };
     const role = decoded.role;
 
     // Redirect based on role
@@ -30,7 +30,7 @@ export function middleware(req: NextRequest) {
       else url.pathname = '/login';
       return NextResponse.redirect(url);
     }
-  } catch (err) {
+  } catch {
     url.pathname = '/login';
     return NextResponse.redirect(url);
   }

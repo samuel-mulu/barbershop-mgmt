@@ -616,8 +616,8 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
               }}
             />
             <div style={{display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
-              <button
-                onClick={() => setShowCreateBranch(false)}
+            <button
+              onClick={() => setShowCreateBranch(false)}
                 style={{
                   padding: '8px 16px',
                   border: '1px solid #ccc',
@@ -625,11 +625,11 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
                   backgroundColor: 'white',
                   cursor: 'pointer'
                 }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateBranch}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleCreateBranch}
                 disabled={!branchName.trim()}
                 style={{
                   padding: '8px 16px',
@@ -641,7 +641,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
                 }}
               >
                 Create
-              </button>
+            </button>
             </div>
           </div>
         </div>
@@ -717,8 +717,8 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
             </div>
             
             <div style={{display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
-              <button
-                onClick={() => setShowAddService(false)}
+            <button
+              onClick={() => setShowAddService(false)}
                 style={{
                   padding: '8px 16px',
                   border: '1px solid #ccc',
@@ -726,12 +726,12 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
                   backgroundColor: 'white',
                   cursor: 'pointer'
                 }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddServiceToBranch}
-                disabled={!serviceName.trim()}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAddServiceToBranch}
+              disabled={!serviceName.trim()}
                 style={{
                   padding: '8px 16px',
                   border: 'none',
@@ -740,9 +740,9 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
                   color: 'white',
                   cursor: !serviceName.trim() ? 'not-allowed' : 'pointer'
                 }}
-              >
-                Add Service
-              </button>
+            >
+              Add Service
+            </button>
             </div>
           </div>
         </div>
