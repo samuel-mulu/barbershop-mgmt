@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     console.log("🔍 Processing admin service operations:", serviceOperations);
 
     // Find the admin user to add service operations to
-    let adminUser = await User.findById(decoded.id);
+    const adminUser = await User.findById(decoded.userId);
     if (!adminUser) {
       return NextResponse.json({ error: "Admin user not found" }, { status: 404 });
     }
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
       };
       
       // Add operation directly to database using $push
-      await User.findByIdAndUpdate(decoded.id, {
+      await User.findByIdAndUpdate(decoded.userId, {
         $push: { adminServiceOperations: adminServiceOperation }
       });
       
@@ -90,9 +90,10 @@ export async function POST(req: Request) {
         workerId: op.workerId
       }))
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("POST /api/admin/service-operations error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -109,23 +110,23 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const branch = searchParams.get("branch");
 
-    let query: any = {};
+    let query: Record<string, unknown> = {};
     
     // Always get operations for the current admin user
-    query._id = decoded.id;
+    query._id = decoded.userId;
     query.role = "admin";
 
          console.log("🔍 GET admin service operations query:", query);
      const adminUsers = await User.find(query).select("adminServiceOperations name");
      
      // Extract admin service operations from all admin users
-     const allAdminServiceOperations = adminUsers.reduce((operations: any[], user: any) => {
+     const allAdminServiceOperations = adminUsers.reduce((operations: Array<Record<string, unknown>>, user: Record<string, unknown>) => {
        // Handle users without adminServiceOperations field
-       const userOperations = user.adminServiceOperations || [];
+       const userOperations = (user.adminServiceOperations as Array<Record<string, unknown>>) || [];
        console.log(`🔍 Admin user ${user.name} has ${userOperations.length} admin service operations`);
               if (userOperations.length > 0) {
          // Add user info to each admin service operation
-         const mappedOperations = userOperations.map((op: any, index: number) => {
+         const mappedOperations = userOperations.map((op: Record<string, unknown>, index: number) => {
           console.log(`🔍 Raw admin operation ${index} from ${user.name}:`, JSON.stringify(op, null, 2));
           
           // Ensure we have the correct structure
@@ -151,8 +152,9 @@ export async function GET(req: Request) {
 
     console.log("🔍 Total admin service operations found:", allAdminServiceOperations.length);
     return NextResponse.json(allAdminServiceOperations);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("GET /api/admin/service-operations error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 

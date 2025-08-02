@@ -40,7 +40,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     }
 
     return NextResponse.json(updatedUser);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("PUT /api/users/[id] error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }

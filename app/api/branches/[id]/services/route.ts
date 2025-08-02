@@ -52,7 +52,7 @@ export async function PUT(
     console.log("Service updated successfully");
 
     return NextResponse.json(branch);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("PUT /api/branches/[id]/services error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }
@@ -96,7 +96,7 @@ export async function DELETE(
     await branch.save();
 
     return NextResponse.json(branch);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("DELETE /api/branches/[id]/services error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }
@@ -145,7 +145,7 @@ export async function POST(
 
     console.log("Services added successfully to branch:", branch._id);
     return NextResponse.json(branch);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("POST /api/branches/[id]/services error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }

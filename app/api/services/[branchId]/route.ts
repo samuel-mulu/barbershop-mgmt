@@ -14,7 +14,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ branchId
 
     // Return the services array from the branch
     return NextResponse.json(branch.services || []);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("GET /api/services/[branchId] error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }

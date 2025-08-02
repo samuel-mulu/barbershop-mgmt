@@ -29,7 +29,7 @@ export async function GET(
     }
 
     return NextResponse.json(branch);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("GET /api/branches/[id] error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }

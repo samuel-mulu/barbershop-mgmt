@@ -24,7 +24,7 @@ export async function GET(req: Request) {
     }).select("-password");
 
     return NextResponse.json(users);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("GET /api/users error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }

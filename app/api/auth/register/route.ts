@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     const hashed = await bcrypt.hash(password, 10);
     
     // Create user data object with proper typing
-    const userData: any = { phone, name, password: hashed, role };
+    const userData: unknown = { phone, name, password: hashed, role };
     
     // Add branchId only if provided
     if (branchId) {

@@ -13,7 +13,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Branch ID or Owner ID is required" }, { status: 400 });
     }
 
-    let query: any = {};
+    const query: unknown = {};
 
     if (branchId) {
       // Fetch workers for a specific branch
@@ -34,7 +34,7 @@ export async function GET(req: Request) {
     const workers = await User.find(query).select("-password");
 
     return NextResponse.json(workers);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("GET /api/workers error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(worker, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("POST /api/workers error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }

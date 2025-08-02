@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       message: `Successfully migrated ${updatedUsers.length} users`,
       migratedCount: updatedUsers.length
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Migration error:", error);
     return NextResponse.json({ error: error.message || "Migration failed" }, { status: 500 });
   }

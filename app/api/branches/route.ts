@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     await Owner.findByIdAndUpdate(ownerId, { $push: { branches: branch._id } });
     
     return NextResponse.json(branch, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("POST /api/branches error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
     await connectDB();
     const { searchParams } = new URL(req.url);
     const ownerId = searchParams.get("ownerId");
-    let branches;
+    const branches;
     
     if (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) {
       branches = await Branch.find({ ownerId });
@@ -57,7 +57,7 @@ export async function GET(req: Request) {
     }
     
     return NextResponse.json(branches);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("GET /api/branches error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }

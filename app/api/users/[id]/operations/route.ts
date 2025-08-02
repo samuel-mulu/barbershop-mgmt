@@ -26,7 +26,7 @@ export async function GET(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    let operations: any[] = [];
+    const operations: unknown[] = [];
 
     if (user.role === "admin") {
       // For admin users, get adminServiceOperations
@@ -52,7 +52,7 @@ export async function GET(
     operations.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     return NextResponse.json(operations);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("GET /api/users/[id]/operations error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }
@@ -114,7 +114,7 @@ export async function PATCH(
     }
 
     return NextResponse.json({ message: "Operation status updated successfully" });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("PATCH /api/users/[id]/operations error:", error);
     return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
   }
