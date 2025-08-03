@@ -181,7 +181,7 @@ export default function AdminDashboard() {
 
   // Helper functions for service selection
   const getSelectedService = () => {
-    return services.find((s: any) => s.name === selectedServiceId); // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return services.find((s: any) => s.name === selectedServiceId);  
   };
 
   const shouldShowBarberDropdown = () => {
@@ -216,7 +216,7 @@ export default function AdminDashboard() {
       // Convert selected services to service operations for workers
       const workerServiceOperations = selectedServices.map(service => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let operationData: any = {
+    const operationData: any = {
           name: service.serviceName
         };
         
@@ -479,7 +479,7 @@ export default function AdminDashboard() {
                     className="form-select"
                   >
                     <option value="">Select Service</option>
-                    {services.map((service: any, index: number) => ( // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    {services.map((service: any, index: number) => (  
                       <option key={service.name || index} value={service.name}>
                         {service.name}
                       </option>
@@ -499,7 +499,7 @@ export default function AdminDashboard() {
                       className="form-select"
                     >
                       <option value="">Select Barber</option>
-                      {barbers.map((barber: any) => ( // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      {barbers.map((barber: any) => (  
                         <option key={barber._id || barber.name} value={barber._id}>
                           {barber.name}
                         </option>
@@ -520,7 +520,7 @@ export default function AdminDashboard() {
                       className="form-select"
                     >
                       <option value="">Select Washer</option>
-                      {washers.map((washer: any) => ( // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      {washers.map((washer: any) => (  
                         <option key={washer._id || washer.name} value={washer._id}>
                           {washer.name}
                         </option>
@@ -562,7 +562,7 @@ export default function AdminDashboard() {
                       <div className="text-xs text-slate-600">
                         {(() => {
                           let totalPrice = 0;
-                          let priceBreakdown = [];
+                          const priceBreakdown = [];
                           
                           if (service.barberPrice) {
                             totalPrice += service.barberPrice;

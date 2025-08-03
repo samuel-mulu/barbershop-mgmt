@@ -7,12 +7,8 @@ import {
   Droplets, 
   Clock, 
   DollarSign, 
-  CheckCircle, 
   AlertCircle,
   RefreshCw,
-  User,
-  Calendar,
-  TrendingUp,
   LogOut
 } from "lucide-react";
 
@@ -34,10 +30,19 @@ interface ServiceOperation {
   workerName: string;
   workerRole: string;
   workerId: string;
+  originalPrice?: number;
+}
+
+interface UserType {
+  _id: string;
+  name: string;
+  role: string;
+  branchId: string;
+  phone: string;
 }
 
 export default function WasherDashboard() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<UserType | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [branchName, setBranchName] = useState<string>("");
 
@@ -195,7 +200,7 @@ export default function WasherDashboard() {
                 <tbody>
                 {safeServiceOperations.map((operation: ServiceOperation, index: number) => {
                     // Get original price and current share
-                    const originalPrice = (operation as any).originalPrice || operation.price * 10; // If no original price, estimate
+                    const originalPrice = operation.originalPrice || operation.price * 10; // If no original price, estimate
                     const washerShare = operation.price; // This is already 10% of original
                     
                     return (
