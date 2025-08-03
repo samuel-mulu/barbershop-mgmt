@@ -43,8 +43,12 @@ export async function POST(req: Request) {
 export async function GET(req: Request) {
   try {
     await connectDB();
+    console.log("🔍 GET /api/branches - Headers:", Object.fromEntries(req.headers.entries()));
+    
     const { searchParams } = new URL(req.url);
     const ownerId = searchParams.get("ownerId");
+    console.log("🔍 OwnerId from query params:", ownerId);
+    
     let branches;
     
     if (ownerId && mongoose.Types.ObjectId.isValid(ownerId)) {

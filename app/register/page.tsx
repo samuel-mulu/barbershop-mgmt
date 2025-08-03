@@ -27,6 +27,9 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const needsBranchId = ["admin", "barber", "washer"].includes(role);
+  
+  // Debug: Log when branch ID is needed
+  console.log("Role:", role, "Needs Branch ID:", needsBranchId);
 
   const getRoleIcon = (role: string) => {
     switch (role) {
@@ -91,6 +94,9 @@ export default function RegisterPage() {
   const canProceedToStep2 = name && phone;
   const canProceedToStep3 = password && confirmPassword && password === confirmPassword;
   const canRegister = name && phone && password && confirmPassword && password === confirmPassword && (!needsBranchId || branchId);
+  
+  // Show validation message for missing branch ID
+  const showBranchIdError = needsBranchId && !branchId;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4">
@@ -283,21 +289,37 @@ export default function RegisterPage() {
               </div>
 
               {/* Branch ID Input */}
-        {needsBranchId && (
+              {needsBranchId && (
                 <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                    <Building className="w-4 h-4" />
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
+                    <div className="text-sm font-medium text-blue-800 mb-2">
+                      ⚠️ Branch ID Required
+                    </div>
+                    <div className="text-xs text-blue-600 mb-3">
+                      This role requires a Branch ID. Please ask your system owner for the Branch ID.
+                    </div>
                   </div>
-          <input
-                    required
-                    className="input pl-12"
-                    type="text"
-                    name="branchId"
-                    id="branchId"
-                    placeholder="Branch ID"
-            value={branchId}
-            onChange={e => setBranchId(e.target.value)}
-                  />
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Building className="w-4 h-4" />
+                    </div>
+                    <input
+                      required
+                      className="input pl-12"
+                      type="text"
+                      name="branchId"
+                      id="branchId"
+                      placeholder="Enter Branch ID"
+                      value={branchId}
+                      onChange={e => setBranchId(e.target.value)}
+                    />
+                  </div>
+                  
+                  {showBranchIdError && (
+                    <div className="text-red-500 text-xs mt-1 ml-1">
+                      Branch ID is required for this role
+                    </div>
+                  )}
                 </div>
               )}
 

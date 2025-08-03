@@ -101,9 +101,14 @@ export async function GET(req: Request) {
   try {
     await connectDB();
     
+    console.log("🔍 GET /api/admin/service-operations - Headers:", Object.fromEntries(req.headers.entries()));
+    
     // Verify token
     const decoded = verifyToken(req);
+    console.log("🔍 Token verification result:", decoded);
+    
     if (!decoded) {
+      console.log("❌ Token verification failed - returning 401");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

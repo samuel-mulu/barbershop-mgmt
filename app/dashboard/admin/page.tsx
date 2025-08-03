@@ -23,11 +23,27 @@ import {
 
 const fetcher = (url: string) => {
   const token = localStorage.getItem("token");
+  console.log("🔍 Fetcher called for URL:", url);
+  console.log("🔍 Token from localStorage:", token ? "Token exists" : "No token found");
+  
+  if (!token) {
+    console.error("❌ No token found in localStorage");
+    throw new Error("No authentication token found");
+  }
+  
   return fetch(url, {
     headers: {
-      "Authorization": `Bearer ${token}`
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json"
     }
-  }).then(res => res.json());
+  }).then(res => {
+    console.log("🔍 Response status:", res.status, "for URL:", url);
+    if (!res.ok) {
+      console.error("❌ API request failed:", res.status, res.statusText);
+      throw new Error(`API request failed: ${res.status}`);
+    }
+    return res.json();
+  });
 };
 
 interface SelectedService {
