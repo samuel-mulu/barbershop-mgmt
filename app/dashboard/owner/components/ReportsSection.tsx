@@ -115,7 +115,7 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
     try {
       const token = localStorage.getItem("token");
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const updateData: any = { status: newStatus };
+      const updateData: any = { status: newStatus };
       
       // Add finishedDate when marking as finished
       if (newStatus === 'finished') {

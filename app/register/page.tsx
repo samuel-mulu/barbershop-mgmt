@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Eye, 
   EyeOff, 
@@ -11,7 +11,8 @@ import {
   ArrowRight, 
   ArrowLeft,
   CheckCircle,
-  Shield
+  Shield,
+  ChevronDown
 } from "lucide-react";
 
 export default function RegisterPage() {
@@ -25,11 +26,56 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [branches, setBranches] = useState<Array<{ _id: string; name: string }>>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
+  const [showBranchDropdown, setShowBranchDropdown] = useState(false);
 
   const needsBranchId = ["admin", "barber", "washer"].includes(role);
   
   // Debug: Log when branch ID is needed
   console.log("Role:", role, "Needs Branch ID:", needsBranchId);
+
+  // Fetch branches when component mounts
+  useEffect(() => {
+    const fetchBranches = async () => {
+      setLoadingBranches(true);
+      try {
+        const response = await fetch("/api/branches");
+        if (response.ok) {
+          const branchesData = await response.json();
+          setBranches(branchesData);
+        } else {
+          console.error("Failed to fetch branches");
+        }
+      } catch (error) {
+        console.error("Error fetching branches:", error);
+      } finally {
+        setLoadingBranches(false);
+      }
+    };
+
+    fetchBranches();
+  }, []);
+
+  const selectedBranch = branches.find(branch => branch._id === branchId);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.branch-dropdown-container')) {
+        setShowBranchDropdown(false);
+      }
+    };
+
+    if (showBranchDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showBranchDropdown]);
 
   const getRoleIcon = (role: string) => {
     switch (role) {
@@ -71,23 +117,34 @@ export default function RegisterPage() {
       return;
     }
 
+    if (!canRegister) {
+      alert("Please fill in all required fields");
+      return;
+    }
+
     setLoading(true);
     const body: Record<string, unknown> = { phone, password, name, role };
     if (needsBranchId) body.branchId = branchId;
     
-    const res = await fetch("/api/auth/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    setLoading(false);
-
-    if (res.ok) {
-      alert("User registered successfully");
-      window.location.href = "/login";
-    } else {
-      alert(data.error || "Registration failed");
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      
+      if (res.ok) {
+        alert("User registered successfully");
+        window.location.href = "/login";
+      } else {
+        alert(data.error || "Registration failed");
+      }
+    } catch (error) {
+      console.error("Registration error:", error);
+      alert("Registration failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -288,36 +345,62 @@ export default function RegisterPage() {
                 ))}
               </div>
 
-              {/* Branch ID Input */}
+              {/* Branch Selection */}
               {needsBranchId && (
                 <div className="relative">
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3">
                     <div className="text-sm font-medium text-blue-800 mb-2">
-                      ⚠️ Branch ID Required
+                      🏢 Branch Selection Required
                     </div>
                     <div className="text-xs text-blue-600 mb-3">
-                      This role requires a Branch ID. Please ask your system owner for the Branch ID.
+                      This role requires you to be assigned to a specific branch. Please select your branch from the list below.
                     </div>
                   </div>
-                  <div className="relative">
+                  
+                  <div className="relative branch-dropdown-container">
                     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                       <Building className="w-4 h-4" />
                     </div>
-                    <input
-                      required
-                      className="input pl-12"
-                      type="text"
-                      name="branchId"
-                      id="branchId"
-                      placeholder="Enter Branch ID"
-                      value={branchId}
-                      onChange={e => setBranchId(e.target.value)}
-                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowBranchDropdown(!showBranchDropdown)}
+                      className="w-full input pl-12 pr-12 text-left flex items-center justify-between"
+                      disabled={loadingBranches}
+                    >
+                      <span className={selectedBranch ? "text-slate-800" : "text-slate-500"}>
+                        {selectedBranch ? selectedBranch.name : (loadingBranches ? "Loading branches..." : "Select a branch")}
+                      </span>
+                      <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${showBranchDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+                    
+                    {showBranchDropdown && !loadingBranches && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-10 max-h-48 overflow-y-auto">
+                        {branches.length === 0 ? (
+                          <div className="p-3 text-sm text-slate-500 text-center">
+                            No branches available
+                          </div>
+                        ) : (
+                          branches.map((branch) => (
+                            <button
+                              key={branch._id}
+                              type="button"
+                              onClick={() => {
+                                setBranchId(branch._id);
+                                setShowBranchDropdown(false);
+                              }}
+                              className="w-full px-4 py-3 text-left hover:bg-slate-50 border-b border-slate-100 last:border-b-0 transition-colors"
+                            >
+                              <div className="font-medium text-slate-800">{branch.name}</div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
                   </div>
                   
                   {showBranchIdError && (
                     <div className="text-red-500 text-xs mt-1 ml-1">
-                      Branch ID is required for this role
+                      Branch selection is required for this role
                     </div>
                   )}
                 </div>

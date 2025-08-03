@@ -14,11 +14,11 @@ export async function GET(req: Request) {
       status: "success",
       hasJWTSecret: !!process.env.JWT_SECRET,
       tokenVerified: !!decoded,
-      decoded: decoded ? {
-        userId: decoded.userId,
-        role: decoded.role,
-        email: decoded.email
-      } : null,
+              decoded: decoded ? {
+          userId: decoded._id,
+          role: decoded.role,
+          phone: decoded.phone
+        } : null,
       timestamp: new Date().toISOString()
     });
   } catch (error) {

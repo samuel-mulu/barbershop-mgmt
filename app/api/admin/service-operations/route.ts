@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     console.log("🔍 Processing admin service operations:", serviceOperations);
 
     // Find the admin user to add service operations to
-    const adminUser = await User.findById(decoded.userId);
+    const adminUser = await User.findById(decoded._id);
     if (!adminUser) {
       return NextResponse.json({ error: "Admin user not found" }, { status: 404 });
     }
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
       };
       
       // Add operation directly to database using $push
-      await User.findByIdAndUpdate(decoded.userId, {
+      await User.findByIdAndUpdate(decoded._id, {
         $push: { adminServiceOperations: adminServiceOperation }
       });
       
@@ -119,7 +119,7 @@ export async function GET(req: Request) {
     const query: Record<string, unknown> = {};
     
     // Always get operations for the current admin user
-    query._id = decoded.userId;
+    query._id = decoded._id;
     query.role = "admin";
 
          console.log("🔍 GET admin service operations query:", query);

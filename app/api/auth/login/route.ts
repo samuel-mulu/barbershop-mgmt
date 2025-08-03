@@ -15,7 +15,8 @@ export async function POST(req: Request) {
   const isMatch = await bcrypt.compare(password, user.password);
   if (!isMatch) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 
-  const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET!, { expiresIn: '7d' });
+  const JWT_SECRET = process.env.JWT_SECRET || "your-super-secret-jwt-key-change-this-in-production";
+  const token = jwt.sign({ _id: user._id, name: user.name, phone: user.phone, role: user.role }, JWT_SECRET, { expiresIn: '7d' });
 
   return NextResponse.json({ 
     token, 

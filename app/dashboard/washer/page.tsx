@@ -12,7 +12,8 @@ import {
   RefreshCw,
   User,
   Calendar,
-  TrendingUp
+  TrendingUp,
+  LogOut
 } from "lucide-react";
 
 const fetcher = (url: string) => {
@@ -85,9 +86,16 @@ export default function WasherDashboard() {
     );
   }
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("branchId");
+    window.location.href = "/login";
+  };
+
   return (
     <div className="container">
-      {/* Header Section */}
+            {/* Header Section */}
       <div className="header-section">
         <div className="header-content">
           <div className="header-icon">
@@ -99,7 +107,16 @@ export default function WasherDashboard() {
             <p className="text-xs text-slate-500">Branch: {branchName || branchId}</p>
           </div>
         </div>
-        </div>
+        
+        {/* Logout Button */}
+        <button
+          onClick={handleLogout}
+          className="logout-button"
+        >
+          <LogOut className="w-4 h-4 mr-2" />
+          Logout
+        </button>
+      </div>
 
         {/* Summary Cards */}
       <div className="summary-grid">
@@ -232,12 +249,40 @@ export default function WasherDashboard() {
           margin-bottom: 2rem;
           box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
           border: 1px solid rgba(255, 255, 255, 0.2);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
         }
 
         .header-content {
           display: flex;
           align-items: center;
           gap: 1rem;
+        }
+
+        .logout-button {
+          display: flex;
+          align-items: center;
+          padding: 0.75rem 1.5rem;
+          background: linear-gradient(135deg, #ef4444, #dc2626);
+          color: white;
+          border: none;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 0.875rem;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .logout-button:hover {
+          background: linear-gradient(135deg, #dc2626, #b91c1c);
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4);
+        }
+
+        .logout-button:active {
+          transform: translateY(0);
         }
 
         .header-icon {

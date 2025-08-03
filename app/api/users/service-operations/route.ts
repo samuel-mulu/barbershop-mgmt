@@ -158,7 +158,7 @@ export async function GET(req: Request) {
       query._id = userId;
     } else {
       // For current user: get operations for the current user
-      query._id = decoded.id;
+      query._id = decoded._id;
     }
 
     console.log("🔍 GET query:", query);

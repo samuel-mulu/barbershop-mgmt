@@ -18,7 +18,8 @@ import {
   Eye,
   EyeOff,
   Settings,
-  BarChart3
+  BarChart3,
+  LogOut
 } from "lucide-react";
 
 const fetcher = (url: string) => {
@@ -308,6 +309,13 @@ export default function AdminDashboard() {
     setShowHistory(!showHistory);
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("branchId");
+    window.location.href = "/login";
+  };
+
   // Show loading if user data is not loaded yet
   if (!user || !branchId) {
     return (
@@ -346,6 +354,13 @@ export default function AdminDashboard() {
                   View Appointments
                 </button>
               </Link>
+              <button
+                onClick={handleLogout}
+                className="header-button bg-red-500 hover:bg-red-600 text-white"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Logout
+              </button>
             </div>
           </div>
         </div>

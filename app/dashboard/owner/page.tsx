@@ -6,7 +6,8 @@ import ReportsSection from "./components/ReportsSection";
 import { 
   Building2, 
   Users, 
-  BarChart3
+  BarChart3,
+  LogOut
 } from "lucide-react";
 
 interface Branch {
@@ -80,6 +81,13 @@ export default function OwnerDashboard() {
     setActiveSection('staff');
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    localStorage.removeItem("branchId");
+    window.location.href = "/login";
+  };
+
   // ===== MAIN RENDER =====
   if (!ownerId) {
     return (
@@ -119,6 +127,17 @@ export default function OwnerDashboard() {
           >
             <BarChart3 className="w-4 h-4 mr-2" />
             Reports
+          </button>
+        </div>
+        
+        {/* Logout Button */}
+        <div className="logout-section">
+          <button
+            onClick={handleLogout}
+            className="logout-button"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            Logout
           </button>
         </div>
       </div>
@@ -219,6 +238,39 @@ export default function OwnerDashboard() {
           background: linear-gradient(135deg, #667eea, #764ba2);
           color: white;
           box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .logout-section {
+          display: flex;
+          justify-content: flex-end;
+          margin-top: 1rem;
+          padding-top: 1rem;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
+        }
+
+        .logout-button {
+          display: flex;
+          align-items: center;
+          padding: 0.75rem 1.5rem;
+          background: linear-gradient(135deg, #ef4444, #dc2626);
+          color: white;
+          border: none;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 0.875rem;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .logout-button:hover {
+          background: linear-gradient(135deg, #dc2626, #b91c1c);
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4);
+        }
+
+        .logout-button:active {
+          transform: translateY(0);
         }
 
 

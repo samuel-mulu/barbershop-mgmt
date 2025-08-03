@@ -14,7 +14,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     
-    const ownerId = decoded.id || decoded._id;
+    const ownerId = decoded._id;
     console.log("Creating branch for owner:", ownerId);
     
     const { name, services } = await req.json();

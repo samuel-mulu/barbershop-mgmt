@@ -3,8 +3,9 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = process.env.JWT_SECRET || "your-super-secret-jwt-key-change-this-in-production";
 
 interface DecodedToken {
-  userId: string;
-  email: string;
+  _id: string;
+  name: string;
+  phone: string;
   role: string;
   iat: number;
   exp: number;
@@ -21,7 +22,7 @@ export const verifyToken = (req: Request): DecodedToken | null => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    if (typeof decoded === "object" && decoded !== null && "userId" in decoded && "email" in decoded && "role" in decoded && "iat" in decoded && "exp" in decoded) {
+    if (typeof decoded === "object" && decoded !== null && "_id" in decoded && "name" in decoded && "phone" in decoded && "role" in decoded && "iat" in decoded && "exp" in decoded) {
       console.log("Token verified successfully for user:", decoded);
       return decoded as DecodedToken;
     } else {
