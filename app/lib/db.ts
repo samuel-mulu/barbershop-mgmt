@@ -9,12 +9,21 @@ if (!MONGODB_URI) {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let cached = (global as any).mongoose;
+interface CachedConnection {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+}
 
-if (!cached) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  cached = (global as any).mongoose = { conn: null, promise: null };
+interface GlobalWithMongoose {
+  mongoose?: CachedConnection;
+}
+
+const globalWithMongoose = global as GlobalWithMongoose;
+
+let cached: CachedConnection = globalWithMongoose.mongoose || { conn: null, promise: null };
+
+if (!globalWithMongoose.mongoose) {
+  globalWithMongoose.mongoose = cached;
 }
 
 export const connectDB = async () => {

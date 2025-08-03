@@ -72,8 +72,20 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
   const [creating, setCreating] = useState(false);
   const [expandedBranches, setExpandedBranches] = useState<Set<string>>(new Set());
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [editingService, setEditingService] = useState<{branchId: string, serviceIndex: number, service: any} | null>(null);
+  
+  interface Service {
+    name: string;
+    barberPrice?: number;
+    washerPrice?: number;
+  }
+  
+  interface EditingService {
+    branchId: string;
+    serviceIndex: number;
+    service: Service;
+  }
+  
+  const [editingService, setEditingService] = useState<EditingService | null>(null);
 
   // Fetch all branches for this owner
   const { data: branches = [], isLoading: loadingBranches, mutate: mutateBranches, error: branchesError } = useSWR(
@@ -88,7 +100,11 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
   );
 
   // Group users by branch with error handling
-      const usersByBranch = Array.isArray(allUsers) ? allUsers.reduce((acc: any, user: User) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+  interface UsersByBranch {
+    [branchId: string]: User[];
+  }
+  
+  const usersByBranch: UsersByBranch = Array.isArray(allUsers) ? allUsers.reduce((acc: UsersByBranch, user: User) => {
     if (!acc[user.branchId]) {
       acc[user.branchId] = [];
     }
@@ -132,7 +148,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
     setExpandedServices(newExpanded);
   };
 
-  const handleEditService = (branchId: string, serviceIndex: number, service: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const handleEditService = (branchId: string, serviceIndex: number, service: Service) => {
     setEditingService({ branchId, serviceIndex, service });
   };
 

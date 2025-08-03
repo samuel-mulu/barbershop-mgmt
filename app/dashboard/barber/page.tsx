@@ -34,6 +34,7 @@ interface ServiceOperation {
   workerName: string;
   workerRole: string;
   workerId: string;
+  originalPrice?: number;
 }
 
 export default function BarberDashboard() {
@@ -193,7 +194,7 @@ export default function BarberDashboard() {
                 <tbody>
                 {safeServiceOperations.map((operation: ServiceOperation, index: number) => {
                     // Get original price and current share
-                    const originalPrice = (operation as any).originalPrice || operation.price * 2; // If no original price, estimate
+                    const originalPrice = operation.originalPrice || operation.price * 2; // If no original price, estimate
                     const barberShare = operation.price; // This is already 50% of original
                     
                     return (

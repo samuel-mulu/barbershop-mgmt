@@ -47,6 +47,26 @@ const fetcher = (url: string) => {
   });
 };
 
+interface Service {
+  name: string;
+  barberPrice?: number;
+  washerPrice?: number;
+}
+
+interface Barber {
+  _id: string;
+  name: string;
+  role: string;
+  branchId: string;
+}
+
+interface Washer {
+  _id: string;
+  name: string;
+  role: string;
+  branchId: string;
+}
+
 interface SelectedService {
   serviceId: string;
   serviceName: string;
@@ -74,16 +94,34 @@ interface ServiceOperation {
   } | null;
 }
 
+interface WorkerServiceOperation {
+  name: string;
+  barberPrice?: number;
+  washerPrice?: number;
+  workerId?: string;
+  washerId?: string;
+  status: string;
+}
+
+interface AdminServiceOperation {
+  name: string;
+  price: number;
+  workerName: string;
+  workerRole: "barber" | "washer";
+  workerId: string;
+  status: string;
+}
+
 export default function AdminDashboard() {
-  const [user, setUser] = useState<{ name: string; branchId?: string } | null>(null);
+  const [user, setUser] = useState<{ _id: string; name: string; role: string; branchId: string } | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [branchName, setBranchName] = useState<string>("");
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
-  const [selectedServiceId, setSelectedServiceId] = useState("");
-  const [selectedBarberId, setSelectedBarberId] = useState("");
-  const [selectedWasherId, setSelectedWasherId] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  const [selectedServiceId, setSelectedServiceId] = useState<string>("");
+  const [selectedBarberId, setSelectedBarberId] = useState<string>("");
+  const [selectedWasherId, setSelectedWasherId] = useState<string>("");
+  const [saving, setSaving] = useState<boolean>(false);
+  const [showHistory, setShowHistory] = useState<boolean>(false);
 
   // Get user data and branchId on component mount
   useEffect(() => {
@@ -94,17 +132,40 @@ export default function AdminDashboard() {
     }
   }, []);
 
-  // Fetch workers for the admin's branch
-  const { data: workers = [], isLoading: loadingWorkers } = useSWR(
-    branchId ? `/api/workers?branchId=${branchId}` : null,
+  // Fetch services, barbers, washers, and service operations
+  const { data: services = [] } = useSWR<Service[]>(
+    user?._id ? "/api/services" : null,
     fetcher
   );
 
-  // Fetch services for the admin's branch
-  const { data: services = [], isLoading: loadingServices } = useSWR(
-    branchId ? `/api/services/${branchId}` : null,
+  const { data: barbers = [] } = useSWR<Barber[]>(
+    user?.branchId ? `/api/workers?branchId=${user.branchId}&role=barber` : null,
     fetcher
   );
+
+  const { data: washers = [] } = useSWR<Washer[]>(
+    user?.branchId ? `/api/workers?branchId=${user.branchId}&role=washer` : null,
+    fetcher
+  );
+
+  const { data: serviceOperations = [], mutate: mutateOperations } = useSWR<ServiceOperation[]>(
+    user?._id ? `/api/users/service-operations?userId=${user._id}` : null,
+    fetcher
+  );
+
+  // Ensure serviceOperations is always an array
+  const safeServiceOperations = Array.isArray(serviceOperations) ? serviceOperations : [];
+  
+  // Filter workers by role
+  const barbersList = barbers.filter((worker: Barber) => worker.role === "barber");
+  const washersList = washers.filter((worker: Washer) => worker.role === "washer");
+
+  // Update branch name when branch data is fetched
+  useEffect(() => {
+    if (user?.branchId && user.branchId) {
+      setBranchId(user.branchId);
+    }
+  }, [user?.branchId]);
 
   // Fetch branch information
   const { data: branchData } = useSWR(
@@ -120,81 +181,67 @@ export default function AdminDashboard() {
   }, [branchData]);
 
   // Fetch admin service operations history for the current admin
-  const { data: serviceOperations = [], isLoading: loadingHistory, error: historyError } = useSWR(
+  const { data: serviceOperationsHistory = [], isLoading: loadingHistory, error: historyError } = useSWR(
     showHistory ? `/api/admin/service-operations` : null,
     fetcher
   );
 
   // Ensure serviceOperations is always an array and filter to only pending operations
-  const safeServiceOperations = Array.isArray(serviceOperations) ? serviceOperations.filter(op => op.status === "pending") : [];
+  const safeServiceOperationsHistory = Array.isArray(serviceOperationsHistory) ? serviceOperationsHistory.filter(op => op.status === "pending") : [];
   
   // Filter workers by role
-  const barbers = workers.filter((worker: Record<string, unknown>) => worker.role === "barber");
-  const washers = workers.filter((worker: Record<string, unknown>) => worker.role === "washer");
+  const barbersHistory = barbersList.filter((worker: Barber) => worker.role === "barber");
+  const washersHistory = washersList.filter((worker: Washer) => worker.role === "washer");
 
-  // Add selected service to the list
   const handleAddService = () => {
-    if (!selectedServiceId) return;
+    if (!selectedServiceId || (!selectedBarberId && !selectedWasherId)) return;
 
-    const service = services.find((s: Record<string, unknown>) => s.name === selectedServiceId);
+    const service = getSelectedService();
     if (!service) return;
 
-    // Check if service has barber price and barber is selected
-    if (service.barberPrice && !selectedBarberId) return;
-
-    // Check if service has washer price and washer is selected
-    if (service.washerPrice && !selectedWasherId) return;
-
-    // Check if at least one worker is selected
-    if (!selectedBarberId && !selectedWasherId) return;
-
-    const barber = selectedBarberId ? barbers.find((b: Record<string, unknown>) => b._id === selectedBarberId) : null;
-    const washer = selectedWasherId ? washers.find((w: Record<string, unknown>) => w._id === selectedWasherId) : null;
-
-    // Validate that we have workers for the required services
-    if (service.barberPrice && !barber) return;
-    if (service.washerPrice && !washer) return;
-
-    const newSelectedService: SelectedService = {
-      serviceId: service.name,
-      serviceName: service.name,
-      barberPrice: service.barberPrice,
-      washerPrice: service.washerPrice,
-      barberId: barber?._id || "",
-      barberName: barber?.name || "",
-      washerId: washer?._id || "",
-      washerName: washer?.name || "",
+    const newService: SelectedService = {
+      serviceId: selectedServiceId,
+      serviceName: selectedServiceId,
+      barberId: selectedBarberId || "",
+      barberName: selectedBarberId ? barbersList.find(b => b._id === selectedBarberId)?.name || "" : "",
+      washerId: selectedWasherId,
+      washerName: selectedWasherId ? washersList.find(w => w._id === selectedWasherId)?.name || "" : "",
     };
 
-    setSelectedServices([...selectedServices, newSelectedService]);
-    
-    // Reset selections
+    if (service.barberPrice && selectedBarberId) {
+      newService.barberPrice = service.barberPrice;
+    }
+
+    if (service.washerPrice && selectedWasherId) {
+      newService.washerPrice = service.washerPrice;
+    }
+
+    setSelectedServices([...selectedServices, newService]);
     setSelectedServiceId("");
     setSelectedBarberId("");
     setSelectedWasherId("");
   };
 
-  // Remove service from selected list
   const handleRemoveService = (index: number) => {
     setSelectedServices(selectedServices.filter((_, i) => i !== index));
   };
 
   // Helper functions for service selection
-  const getSelectedService = () => {
-    return services.find((s: any) => s.name === selectedServiceId);  
+  const getSelectedService = (): Service | undefined => {
+    return services.find((s: Service) => s.name === selectedServiceId);
   };
 
-  const shouldShowBarberDropdown = () => {
+  const shouldShowBarberDropdown = (): boolean => {
     const service = getSelectedService();
-    return service && service.barberPrice;
+    return service ? !!service.barberPrice : false;
   };
 
-  const shouldShowWasherDropdown = () => {
+  const shouldShowWasherDropdown = (): boolean => {
     const service = getSelectedService();
-    return service && service.washerPrice;
+    return service ? !!service.washerPrice : false;
   };
 
-  const isAddButtonDisabled = () => {
+  const isAddButtonDisabled = (): boolean => {
     if (!selectedServiceId) return true;
     
     const service = getSelectedService();
@@ -214,10 +261,10 @@ export default function AdminDashboard() {
     setSaving(true);
     try {
       // Convert selected services to service operations for workers
-      const workerServiceOperations = selectedServices.map(service => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const operationData: any = {
-          name: service.serviceName
+      const workerServiceOperations: WorkerServiceOperation[] = selectedServices.map(service => {
+        const operationData: WorkerServiceOperation = {
+          name: service.serviceName,
+          status: "pending"
         };
         
         if (service.barberId && service.barberPrice) {
@@ -230,16 +277,14 @@ export default function AdminDashboard() {
           operationData.washerId = service.washerId;
         }
         
-        operationData.status = "pending";
         return operationData;
       });
 
       // Convert selected services to admin service operations
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const adminServiceOperations: any[] = [];
+      const adminServiceOperations: AdminServiceOperation[] = [];
       
       selectedServices.forEach(service => {
-        if (service.barberId && service.barberPrice) {
+        if (service.barberId && service.barberPrice && service.barberName) {
           adminServiceOperations.push({
             name: service.serviceName,
             price: service.barberPrice,
@@ -252,7 +297,7 @@ export default function AdminDashboard() {
       });
       
       selectedServices.forEach(service => {
-        if (service.washerId && service.washerPrice) {
+        if (service.washerId && service.washerPrice && service.washerName) {
           adminServiceOperations.push({
             name: service.serviceName,
             price: service.washerPrice,
@@ -281,30 +326,24 @@ export default function AdminDashboard() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ serviceOperations: adminServiceOperations }),
+        body: JSON.stringify({ adminServiceOperations }),
       });
 
       if (workerResponse.ok && adminResponse.ok) {
         setSelectedServices([]);
-        alert("Service operations saved successfully!");
-        if (showHistory) {
-          mutate(`/api/admin/service-operations`);
-        }
+        mutateOperations();
+        alert("Services saved successfully!");
       } else {
-        const workerResponseData = await workerResponse.json();
-        const adminResponseData = await adminResponse.json();
-        const errorMessage = workerResponseData.error || adminResponseData.error || "Failed to save service operations";
-        alert(errorMessage);
+        throw new Error("Failed to save services");
       }
     } catch (error) {
-      console.error("Error saving service operations:", error);
-      alert("Error saving service operations");
+      console.error("Error saving services:", error);
+      alert("Error saving services. Please try again.");
     } finally {
       setSaving(false);
     }
   };
 
-  // Toggle history view
   const toggleHistory = () => {
     setShowHistory(!showHistory);
   };
@@ -378,7 +417,7 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <h3 className="summary-label-small">ዘተሰረሐ ስራሕ</h3>
-                  <p className="summary-value-small text-blue-600">{safeServiceOperations.length}</p>
+                  <p className="summary-value-small text-blue-600">{safeServiceOperationsHistory.length}</p>
                 </div>
               </div>
               <div className="summary-card-small">
@@ -388,7 +427,7 @@ export default function AdminDashboard() {
                 <div>
                   <h3 className="summary-label-small">ዘይተረከበ ብር</h3>
                   <p className="summary-value-small text-green-600">
-                    {safeServiceOperations.reduce((total, op) => total + (op.price || 0), 0)} ብር
+                    {safeServiceOperationsHistory.reduce((total, op) => total + (op.price || 0), 0)} ብር
                   </p>
                 </div>
               </div>
@@ -410,7 +449,7 @@ export default function AdminDashboard() {
                   Retry
                 </button>
               </div>
-            ) : safeServiceOperations.length === 0 ? (
+            ) : safeServiceOperationsHistory.length === 0 ? (
               <div className="empty-state">
                 <Clock className="w-12 h-12 text-slate-400 mx-auto mb-2" />
                 <p className="text-slate-500">No service operations found</p>
@@ -428,7 +467,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {safeServiceOperations.map((operation: any, index: number) => ( // eslint-disable-line @typescript-eslint/no-explicit-any
+                    {safeServiceOperationsHistory.map((operation: ServiceOperation, index: number) => (
                       <tr key={operation._id || `operation_${index}_${Date.now()}`}>
                         <td className="font-medium">{operation.name || 'N/A'}</td>
                         <td>
@@ -479,7 +518,7 @@ export default function AdminDashboard() {
                     className="form-select"
                   >
                     <option value="">Select Service</option>
-                    {services.map((service: any, index: number) => (  
+                    {services.map((service: Service, index: number) => (  
                       <option key={service.name || index} value={service.name}>
                         {service.name}
                       </option>
@@ -499,7 +538,7 @@ export default function AdminDashboard() {
                       className="form-select"
                     >
                       <option value="">Select Barber</option>
-                      {barbers.map((barber: any) => (  
+                      {barbersList.map((barber: Barber) => (  
                         <option key={barber._id || barber.name} value={barber._id}>
                           {barber.name}
                         </option>
@@ -520,7 +559,7 @@ export default function AdminDashboard() {
                       className="form-select"
                     >
                       <option value="">Select Washer</option>
-                      {washers.map((washer: any) => (  
+                      {washersList.map((washer: Washer) => (  
                         <option key={washer._id || washer.name} value={washer._id}>
                           {washer.name}
                         </option>
