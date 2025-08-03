@@ -331,8 +331,8 @@ export default function AdminDashboard() {
       } else {
         throw new Error("Failed to save services");
       }
-    } catch (error) {
-      console.error("Error saving services:", error);
+    } catch (error: unknown) {
+      console.error("Error saving services:", error instanceof Error ? error.message : "Unknown error");
       alert("Error saving services. Please try again.");
     } finally {
       setSaving(false);

@@ -225,7 +225,7 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
       alert(`${selectedCount} ${operationText} marked as finished successfully!`);
       
     } catch (error) {
-      console.error("Error updating operations:", error);
+      console.error("Error updating operations:", error instanceof Error ? error.message : "Unknown error");
       alert("Error updating operations. Please try again.");
     } finally {
       setIsLoading(false);

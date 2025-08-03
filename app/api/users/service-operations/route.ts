@@ -177,10 +177,12 @@ export async function GET(req: Request) {
     
     // Extract service operations from all users
     const allServiceOperations = users.reduce((operations: unknown[], user: Record<string, unknown>) => {
-      console.log(`🔍 User ${user.name} has ${user.serviceOperations?.length || 0} service operations`);
-      if (user.serviceOperations && user.serviceOperations.length > 0) {
+      const serviceOperations = user.serviceOperations;
+      const operationsCount = Array.isArray(serviceOperations) ? serviceOperations.length : 0;
+      console.log(`🔍 User ${user.name} has ${operationsCount} service operations`);
+      if (Array.isArray(serviceOperations) && serviceOperations.length > 0) {
         // Add user info to each service operation
-        const userOperations = (user.serviceOperations as Array<Record<string, unknown>>).map((op: Record<string, unknown>, index: number) => {
+        const userOperations = (serviceOperations as Array<Record<string, unknown>>).map((op: Record<string, unknown>, index: number) => {
           console.log(`🔍 Raw operation ${index} from ${user.name}:`, JSON.stringify(op, null, 2));
           console.log(`🔍 Operation ${index} type:`, typeof op);
           console.log(`🔍 Operation ${index} keys:`, Object.keys(op || {}));

@@ -160,7 +160,7 @@ export default function BarberDashboard() {
           ) : error ? (
           <div className="error-state">
             <AlertCircle className="w-8 h-8" />
-            <p>Error loading services: {error.message}</p>
+            <p>Error loading services: {error instanceof Error ? error.message : "Unknown error"}</p>
               <button 
                 onClick={() => window.location.reload()} 
               className="retry-button"

@@ -4,7 +4,7 @@ export const getUserFromLocalStorage = () => {
   try {
     const user = localStorage.getItem('user');
     return user ? JSON.parse(user) : null;
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Invalid user JSON in localStorage:', error);
     return null;
   }

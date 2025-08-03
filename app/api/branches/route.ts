@@ -36,7 +36,8 @@ export async function POST(req: Request) {
     return NextResponse.json(branch, { status: 201 });
   } catch (error: unknown) {
     console.error("POST /api/branches error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -63,6 +64,7 @@ export async function GET(req: Request) {
     return NextResponse.json(branches);
   } catch (error: unknown) {
     console.error("GET /api/branches error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 

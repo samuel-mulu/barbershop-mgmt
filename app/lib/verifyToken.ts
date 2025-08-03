@@ -29,7 +29,7 @@ export const verifyToken = (req: Request): DecodedToken | null => {
       console.error("Decoded token does not match expected structure:", decoded);
       return null;
     }
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Token verification failed:", error);
     return null;
   }

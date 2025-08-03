@@ -48,7 +48,7 @@ export default function RegisterPage() {
           console.error("Failed to fetch branches");
         }
       } catch (error) {
-        console.error("Error fetching branches:", error);
+        console.error("Error fetching branches:", error instanceof Error ? error.message : "Unknown error");
       } finally {
         setLoadingBranches(false);
       }
@@ -131,7 +131,7 @@ export default function RegisterPage() {
         alert(data.error || "Registration failed");
       }
     } catch (error) {
-      console.error("Registration error:", error);
+      console.error("Registration error:", error instanceof Error ? error.message : "Unknown error");
       alert("Registration failed. Please try again.");
     } finally {
       setLoading(false);

@@ -69,7 +69,7 @@ export async function PATCH(
 
     return NextResponse.json({ message: "Operation status updated successfully" });
   } catch (error: unknown) {
-    console.error("PATCH /api/users/[id]/operations/[operationId] error:", String(error));
+    console.error("PATCH /api/users/[id]/operations/[operationId] error:", error instanceof Error ? error.message : "Unknown error");
     const errorMessage = error instanceof Error ? error.message : "Server error";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }

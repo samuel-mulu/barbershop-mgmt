@@ -43,7 +43,7 @@ export default function Home() {
           }, 5000);
         }
       } catch (error) {
-        console.error('Auth check error:', error);
+        console.error('Auth check error:', error instanceof Error ? error.message : "Unknown error");
         // On error, show splash for 5 seconds then go to login
         setTimeout(() => {
           setShowSplash(false);

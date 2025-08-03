@@ -167,7 +167,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         alert(`Failed to delete service: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error("Error deleting service:", error);
+      console.error("Error deleting service:", error instanceof Error ? error.message : "Unknown error");
       alert("Error deleting service");
     }
   };
@@ -208,7 +208,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         alert(`Failed to update service: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error("Error updating service:", error);
+      console.error("Error updating service:", error instanceof Error ? error.message : "Unknown error");
       alert("Error updating service");
     }
   };
@@ -249,7 +249,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         alert(`Failed to create branch: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error("Error creating branch:", error);
+      console.error("Error creating branch:", error instanceof Error ? error.message : "Unknown error");
       alert("Error creating branch");
     } finally {
       // setCreating(false);
@@ -298,7 +298,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         alert(`Failed to add service: ${errorData.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error("Error adding service:", error);
+      console.error("Error adding service:", error instanceof Error ? error.message : "Unknown error");
       alert("Error adding service");
     }
   };

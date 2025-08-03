@@ -43,13 +43,23 @@ export async function GET(
       const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
 
       operations = operations.filter(operation => {
-        const operationDate = new Date(operation.createdAt);
-        return operationDate >= startOfDay && operationDate < endOfDay;
+        if (typeof operation === 'object' && operation !== null && 'createdAt' in operation) {
+          const operationDate = new Date((operation as { createdAt: string }).createdAt);
+          return operationDate >= startOfDay && operationDate < endOfDay;
+        }
+        return false;
       });
     }
 
     // Sort by creation date (newest first)
-    operations.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    operations.sort((a, b) => {
+      if (typeof a === 'object' && a !== null && 'createdAt' in a && 
+          typeof b === 'object' && b !== null && 'createdAt' in b) {
+        return new Date((b as { createdAt: string }).createdAt).getTime() - 
+               new Date((a as { createdAt: string }).createdAt).getTime();
+      }
+      return 0;
+    });
 
     return NextResponse.json(operations);
   } catch (error: unknown) {
