@@ -7,12 +7,8 @@ import {
   Scissors, 
   Clock, 
   DollarSign, 
-  CheckCircle, 
   AlertCircle,
   RefreshCw,
-  User,
-  Calendar,
-  TrendingUp,
   LogOut
 } from "lucide-react";
 
@@ -193,8 +189,7 @@ export default function BarberDashboard() {
                 </thead>
                 <tbody>
                 {safeServiceOperations.map((operation: ServiceOperation, index: number) => {
-                    // Get original price and current share
-                    const originalPrice = operation.originalPrice || operation.price * 2; // If no original price, estimate
+                    // Get current share
                     const barberShare = operation.price; // This is already 50% of original
                     
                     return (

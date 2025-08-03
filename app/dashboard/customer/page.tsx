@@ -3,8 +3,16 @@ import { useState, useEffect } from "react";
 import { getUserFromLocalStorage } from "@/utils/auth";
 import { User, LogOut } from "lucide-react";
 
+interface UserType {
+  name: string;
+  role: string;
+  phone: string;
+  branchId?: string;
+  _id?: string;
+}
+
 export default function CustomerPage() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<UserType | null>(null);
 
   useEffect(() => {
     const userData = getUserFromLocalStorage();

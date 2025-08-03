@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import useSWR from "swr";
 
 import {
@@ -13,11 +13,7 @@ import {
   Settings,
   Trash2,
   Edit,
-  Expand,
-  Minimize,
-  BarChart3,
-  DollarSign,
-  Calendar
+  BarChart3
 } from "lucide-react";
 
 const fetcher = (url: string) => {
@@ -69,7 +65,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
   const [serviceName, setServiceName] = useState("");
   const [barberPrice, setBarberPrice] = useState("");
   const [washerPrice, setWasherPrice] = useState("");
-  const [creating, setCreating] = useState(false);
+  // const [creating, setCreating] = useState(false);
   const [expandedBranches, setExpandedBranches] = useState<Set<string>>(new Set());
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
   
@@ -129,14 +125,14 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
     setExpandedBranches(newExpanded);
   };
 
-  const expandAllBranches = () => {
-    const allBranchIds = Array.isArray(branches) ? branches.map((branch: Branch) => branch._id) : [];
-    setExpandedBranches(new Set(allBranchIds));
-  };
+  // const expandAllBranches = () => {
+  //   const allBranchIds = Array.isArray(branches) ? branches.map((branch: Branch) => branch._id) : [];
+  //   setExpandedBranches(new Set(allBranchIds));
+  // };
 
-  const collapseAllBranches = () => {
-    setExpandedBranches(new Set());
-  };
+  // const collapseAllBranches = () => {
+  //   setExpandedBranches(new Set());
+  // };
 
   const toggleServiceExpansion = (serviceKey: string) => {
     const newExpanded = new Set(expandedServices);
@@ -220,7 +216,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
   const handleCreateBranch = async () => {
     if (!branchName.trim()) return;
     
-    setCreating(true);
+    // setCreating(true);
     try {
       const token = localStorage.getItem("token");
       if (!token) {
@@ -256,7 +252,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
       console.error("Error creating branch:", error);
       alert("Error creating branch");
     } finally {
-      setCreating(false);
+      // setCreating(false);
     }
   };
 

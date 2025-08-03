@@ -1,9 +1,7 @@
 "use client";
 import React, { useState } from "react";
 import useSWR from "swr";
-import EthiopianDate from "@/components/EthiopianDate";
 import {
-  Users,
   User,
   Scissors,
   Droplets,
@@ -11,7 +9,6 @@ import {
   ArrowLeft,
   BarChart3,
   Phone,
-  Calendar,
   Eye,
   ChevronDown,
   ChevronRight
@@ -299,7 +296,7 @@ export default function StaffSection({
                               
                   {expandedRoles[role] && (
                     <div className="users-list">
-                    {users.map((user: User, index: number) => (
+                    {users.map((user: User) => (
                       <div key={user._id} className="user-card">
                         <div className="user-header">
                           <div className="user-info">

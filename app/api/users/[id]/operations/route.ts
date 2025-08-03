@@ -5,7 +5,7 @@ import { verifyToken } from "@/lib/verifyToken";
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
@@ -18,7 +18,7 @@ export async function GET(
 
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date");
-    const userId = params.id;
+    const { id: userId } = await params;
 
     // Find the user
     const user = await User.findById(userId);
@@ -26,7 +26,7 @@ export async function GET(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const operations: unknown[] = [];
+    let operations: unknown[] = [];
 
     if (user.role === "admin") {
       // For admin users, get adminServiceOperations
@@ -54,13 +54,14 @@ export async function GET(
     return NextResponse.json(operations);
   } catch (error: unknown) {
     console.error("GET /api/users/[id]/operations error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
@@ -72,7 +73,7 @@ export async function PATCH(
     }
 
     const { operationId } = await req.json();
-    const userId = params.id;
+    const { id: userId } = await params;
 
     // Find the user
     const user = await User.findById(userId);
@@ -85,7 +86,7 @@ export async function PATCH(
     // Update the operation status
     if (user.role === "admin") {
       // Update adminServiceOperations
-      const result = await User.updateOne(
+      await User.updateOne(
         { 
           _id: userId,
           "adminServiceOperations._id": operationId 
@@ -99,7 +100,7 @@ export async function PATCH(
       );
     } else {
       // Update serviceOperations
-      const result = await User.updateOne(
+      await User.updateOne(
         { 
           _id: userId,
           "serviceOperations._id": operationId 
@@ -116,6 +117,7 @@ export async function PATCH(
     return NextResponse.json({ message: "Operation status updated successfully" });
   } catch (error: unknown) {
     console.error("PATCH /api/users/[id]/operations error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 

@@ -26,6 +26,7 @@ export async function GET(req: Request) {
     return NextResponse.json(users);
   } catch (error: unknown) {
     console.error("GET /api/users error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 

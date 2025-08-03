@@ -129,7 +129,8 @@ export async function POST(req: Request) {
     });
   } catch (error: unknown) {
     console.error("POST /api/users/service-operations error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -147,7 +148,7 @@ export async function GET(req: Request) {
     const branch = searchParams.get("branch");
     const userId = searchParams.get("userId");
 
-    const query: unknown = {};
+    const query: Record<string, unknown> = {};
     
     if (branch) {
       // For admin dashboard: get all service operations from users in this branch
@@ -165,7 +166,7 @@ export async function GET(req: Request) {
     const users = await User.find(query).select("serviceOperations name role");
     
     // Get all user IDs for looking up other workers
-    const allUserIds = users.map(u => u._id.toString());
+    // const allUserIds = users.map(u => u._id.toString());
     console.log("🔍 Found users:", users.length);
     console.log("🔍 Users details:", users.map(u => ({
       name: u.name,
@@ -175,11 +176,11 @@ export async function GET(req: Request) {
     })));
     
     // Extract service operations from all users
-    const allServiceOperations = users.reduce((operations: unknown[], user: unknown) => {
+    const allServiceOperations = users.reduce((operations: unknown[], user: Record<string, unknown>) => {
       console.log(`🔍 User ${user.name} has ${user.serviceOperations?.length || 0} service operations`);
       if (user.serviceOperations && user.serviceOperations.length > 0) {
         // Add user info to each service operation
-        const userOperations = user.serviceOperations.map((op: unknown, index: number) => {
+        const userOperations = (user.serviceOperations as Array<Record<string, unknown>>).map((op: Record<string, unknown>, index: number) => {
           console.log(`🔍 Raw operation ${index} from ${user.name}:`, JSON.stringify(op, null, 2));
           console.log(`🔍 Operation ${index} type:`, typeof op);
           console.log(`🔍 Operation ${index} keys:`, Object.keys(op || {}));
@@ -210,6 +211,7 @@ export async function GET(req: Request) {
     return NextResponse.json(allServiceOperations);
   } catch (error: unknown) {
     console.error("GET /api/users/service-operations error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 

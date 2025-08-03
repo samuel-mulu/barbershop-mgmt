@@ -5,7 +5,7 @@ import { verifyToken } from "@/lib/verifyToken";
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string; operationId: string } }
+  { params }: { params: Promise<{ id: string; operationId: string }> }
 ) {
   try {
     await connectDB();
@@ -16,7 +16,7 @@ export async function PATCH(
     }
 
     const { status, finishedDate } = await req.json();
-    const { id: userId, operationId } = params;
+    const { id: userId, operationId } = await params;
 
     const user = await User.findById(userId);
     if (!user) {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import User from "@/models/User";
 import { connectDB } from "@/lib/db";
 
-export async function POST(req: Request) {
+export async function POST() {
   try {
     await connectDB();
     
@@ -37,6 +37,7 @@ export async function POST(req: Request) {
     });
   } catch (error: unknown) {
     console.error("Migration error:", error);
-    return NextResponse.json({ error: error.message || "Migration failed" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Migration failed";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 

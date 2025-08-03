@@ -1,12 +1,11 @@
 "use client";
 import Link from "next/link";
-import useSWR, { mutate } from "swr";
+import useSWR from "swr";
 import { useState, useEffect } from "react";
 import { getUserFromLocalStorage } from "@/utils/auth";
 import EthiopianDate from "@/components/EthiopianDate";
 import { 
   Users, 
-  Scissors, 
   Calendar, 
   TrendingUp, 
   DollarSign, 
@@ -14,10 +13,6 @@ import {
   CheckCircle, 
   AlertCircle,
   Plus,
-  Trash2,
-  Eye,
-  EyeOff,
-  Settings,
   BarChart3,
   LogOut
 } from "lucide-react";
@@ -134,7 +129,7 @@ export default function AdminDashboard() {
 
   // Fetch services, barbers, washers, and service operations
   const { data: services = [] } = useSWR<Service[]>(
-    user?._id ? "/api/services" : null,
+    user?.branchId ? `/api/services/${user.branchId}` : null,
     fetcher
   );
 
@@ -148,13 +143,13 @@ export default function AdminDashboard() {
     fetcher
   );
 
-  const { data: serviceOperations = [], mutate: mutateOperations } = useSWR<ServiceOperation[]>(
+  const { mutate: mutateOperations } = useSWR<ServiceOperation[]>(
     user?._id ? `/api/users/service-operations?userId=${user._id}` : null,
     fetcher
   );
 
   // Ensure serviceOperations is always an array
-  const safeServiceOperations = Array.isArray(serviceOperations) ? serviceOperations : [];
+  // const safeServiceOperations = Array.isArray(serviceOperations) ? serviceOperations : [];
   
   // Filter workers by role
   const barbersList = barbers.filter((worker: Barber) => worker.role === "barber");
@@ -190,8 +185,8 @@ export default function AdminDashboard() {
   const safeServiceOperationsHistory = Array.isArray(serviceOperationsHistory) ? serviceOperationsHistory.filter(op => op.status === "pending") : [];
   
   // Filter workers by role
-  const barbersHistory = barbersList.filter((worker: Barber) => worker.role === "barber");
-  const washersHistory = washersList.filter((worker: Washer) => worker.role === "washer");
+  // const barbersHistory = barbersList.filter((worker: Barber) => worker.role === "barber");
+  // const washersHistory = washersList.filter((worker: Washer) => worker.role === "washer");
 
   const handleAddService = () => {
     if (!selectedServiceId || (!selectedBarberId && !selectedWasherId)) return;
@@ -222,9 +217,9 @@ export default function AdminDashboard() {
     setSelectedWasherId("");
   };
 
-  const handleRemoveService = (index: number) => {
-    setSelectedServices(selectedServices.filter((_, i) => i !== index));
-  };
+  // const handleRemoveService = (index: number) => {
+  //   setSelectedServices(selectedServices.filter((_, i) => i !== index));
+  // };
 
   // Helper functions for service selection
   const getSelectedService = (): Service | undefined => {
@@ -326,7 +321,7 @@ export default function AdminDashboard() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ adminServiceOperations }),
+        body: JSON.stringify({ serviceOperations: adminServiceOperations }),
       });
 
       if (workerResponse.ok && adminResponse.ok) {

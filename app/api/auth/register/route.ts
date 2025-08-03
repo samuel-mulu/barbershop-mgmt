@@ -31,7 +31,12 @@ export async function POST(req: Request) {
     const hashed = await bcrypt.hash(password, 10);
     
     // Create user data object with proper typing
-    const userData: unknown = { phone, name, password: hashed, role };
+    const userData: { phone: string; name: string; password: string; role: string; branchId?: string } = { 
+      phone, 
+      name, 
+      password: hashed, 
+      role 
+    };
     
     // Add branchId only if provided
     if (branchId) {
@@ -41,7 +46,7 @@ export async function POST(req: Request) {
     await User.create(userData);
 
     return new Response(JSON.stringify({ message: "Registered" }), { status: 201 });
-  } catch (error) {
+  } catch {
     return new Response(JSON.stringify({ error: "Server error" }), { status: 500 });
   }
 }

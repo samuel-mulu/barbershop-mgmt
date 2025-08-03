@@ -20,6 +20,7 @@ interface GlobalWithMongoose {
 
 const globalWithMongoose = global as GlobalWithMongoose;
 
+// eslint-disable-next-line prefer-const
 let cached: CachedConnection = globalWithMongoose.mongoose || { conn: null, promise: null };
 
 if (!globalWithMongoose.mongoose) {

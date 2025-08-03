@@ -16,6 +16,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ branchId
     return NextResponse.json(branch.services || []);
   } catch (error: unknown) {
     console.error("GET /api/services/[branchId] error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 

@@ -1,11 +1,11 @@
 "use client";
-import React from 'react';
 
 interface SplashScreenProps {
   onComplete: () => void;
 }
 
-const SplashScreen: React.FC<SplashScreenProps> = ({ onComplete }) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const SplashScreen = ({ onComplete }: SplashScreenProps) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex flex-col items-center justify-center relative overflow-hidden">
       {/* Background animated elements */}

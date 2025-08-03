@@ -13,7 +13,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Branch ID or Owner ID is required" }, { status: 400 });
     }
 
-    const query: unknown = {};
+    const query: Record<string, unknown> = {};
 
     if (branchId) {
       // Fetch workers for a specific branch
@@ -36,7 +36,8 @@ export async function GET(req: Request) {
     return NextResponse.json(workers);
   } catch (error: unknown) {
     console.error("GET /api/workers error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -61,6 +62,7 @@ export async function POST(req: Request) {
     return NextResponse.json(worker, { status: 201 });
   } catch (error: unknown) {
     console.error("POST /api/workers error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 

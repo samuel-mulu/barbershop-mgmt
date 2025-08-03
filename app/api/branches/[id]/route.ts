@@ -5,7 +5,7 @@ import { verifyToken } from "@/lib/verifyToken";
 
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await connectDB();
@@ -16,7 +16,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const branchId = params.id;
+    const { id: branchId } = await params;
     
     if (!branchId) {
       return NextResponse.json({ error: "Branch ID is required" }, { status: 400 });

@@ -4,22 +4,15 @@ import EthiopianDate from "@/components/EthiopianDate";
 import { gregorianToEthiopian } from "@/utils/ethiopianCalendar";
 import {
   ArrowLeft,
-  BarChart3,
   Calendar,
   Clock,
   CheckCircle,
-  AlertCircle,
   DollarSign,
   User,
   Scissors,
   Droplets,
-  Eye,
-  CheckSquare,
-  Square,
   ChevronDown,
   ChevronRight,
-  RefreshCw,
-  Filter,
   Phone
 } from "lucide-react";
 
@@ -110,50 +103,50 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
   };
 
   // Handle individual operation status update
-  const handleUpdateOperationStatus = async (operationIndex: number, newStatus: string, userId: string) => {
-    setIsLoading(true);
-    try {
-      const token = localStorage.getItem("token");
+  // const handleUpdateOperationStatus = async (operationIndex: number, newStatus: string, userId: string) => {
+  //   setIsLoading(true);
+  //   try {
+  //     const token = localStorage.getItem("token");
       
-      interface UpdateData {
-        status: string;
-        finishedDate?: string;
-      }
+  //     interface UpdateData {
+  //       status: string;
+  //       finishedDate?: string;
+  //     }
       
-      const updateData: UpdateData = { status: newStatus };
+  //     const updateData: UpdateData = { status: newStatus };
       
-      // Add finishedDate when marking as finished
-      if (newStatus === 'finished') {
-        updateData.finishedDate = new Date().toISOString();
-      }
+  //     // Add finishedDate when marking as finished
+  //     if (newStatus === 'finished') {
+  //       updateData.finishedDate = new Date().toISOString();
+  //     }
       
-      const response = await fetch(`/api/users/${userId}/operations/${operationIndex}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify(updateData),
-      });
+  //     const response = await fetch(`/api/users/${userId}/operations/${operationIndex}`, {
+  //       method: "PATCH",
+  //       headers: {
+  //         "Content-Type": "application/json",
+  //         "Authorization": `Bearer ${token}`,
+  //       },
+  //       body: JSON.stringify(updateData),
+  //     });
 
-      if (response.ok) {
-        alert("Status updated successfully!");
-        // Don't reload, just update the local state
-        setSelectedOperations(new Set());
-        setExpandedOperations(new Set());
-        // Trigger a re-render by updating a state
-        setExpandedDates(new Set(expandedDates));
-      } else {
-        const errorData = await response.json();
-        alert(`Failed to update status: ${errorData.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error("Error updating status:", error);
-      alert("Error updating status");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  //     if (response.ok) {
+  //       alert("Status updated successfully!");
+  //       // Don't reload, just update the local state
+  //       setSelectedOperations(new Set());
+  //       setExpandedOperations(new Set());
+  //       // Trigger a re-render by updating a state
+  //       setExpandedDates(new Set(expandedDates));
+  //     } else {
+  //       const errorData = await response.json();
+  //       alert(`Failed to update status: ${errorData.error || 'Unknown error'}`);
+  //     }
+  //   } catch (error) {
+  //     console.error("Error updating status:", error);
+  //     alert("Error updating status");
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // };
 
   // Handle bulk status update for selected operations
   const handleUpdateSelectedOperations = async (newStatus: string) => {

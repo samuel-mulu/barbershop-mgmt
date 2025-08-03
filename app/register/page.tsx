@@ -88,17 +88,7 @@ export default function RegisterPage() {
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const getRoleColor = (role: string) => {
-    switch (role) {
-      case "owner": return "from-purple-500 to-purple-600";
-      case "admin": return "from-blue-500 to-blue-600";
-      case "barber": return "from-emerald-500 to-emerald-600";
-      case "washer": return "from-amber-500 to-amber-600";
-      case "customer": return "from-slate-500 to-slate-600";
-      default: return "from-slate-500 to-slate-600";
-    }
-  };
+
 
   const getRoleDescription = (role: string) => {
     switch (role) {

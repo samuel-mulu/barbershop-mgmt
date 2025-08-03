@@ -112,9 +112,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { searchParams } = new URL(req.url);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const branch = searchParams.get("branch");
+    // const { searchParams } = new URL(req.url);
 
     const query: Record<string, unknown> = {};
     

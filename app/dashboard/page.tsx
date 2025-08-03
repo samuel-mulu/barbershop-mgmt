@@ -28,7 +28,7 @@ const DashboardPage = () => {
     }
 
     setLoading(false);
-  }, []);
+  }, [router]);
 
   return loading ? <p>Redirecting...</p> : null;
 };

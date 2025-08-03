@@ -54,7 +54,8 @@ export async function PUT(
     return NextResponse.json(branch);
   } catch (error: unknown) {
     console.error("PUT /api/branches/[id]/services error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -98,7 +99,8 @@ export async function DELETE(
     return NextResponse.json(branch);
   } catch (error: unknown) {
     console.error("DELETE /api/branches/[id]/services error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -147,6 +149,7 @@ export async function POST(
     return NextResponse.json(branch);
   } catch (error: unknown) {
     console.error("POST /api/branches/[id]/services error:", error);
-    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Server error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 } 
