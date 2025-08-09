@@ -150,6 +150,9 @@ function AdminDashboardContent() {
     type: "info"
   });
 
+  // Get offline queue functionality - MUST be called before any conditional returns
+  const { isOffline, queueService } = useOfflineQueue();
+
   // Get user data and branchId on component mount
   useEffect(() => {
     const userData = getUserFromLocalStorage();
@@ -485,9 +488,6 @@ function AdminDashboardContent() {
       </div>
     );
   }
-
-  // Get offline queue functionality
-  const { isOffline, queueService } = useOfflineQueue();
 
   // Debug logging
   console.log('🔧 [DEBUG] Admin Dashboard - User:', user);
