@@ -11,7 +11,11 @@ import {
   Phone,
   Eye,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Package,
+  ShoppingCart,
+  DollarSign,
+  ChevronDown as ChevronDownIcon
 } from "lucide-react";
 
 const fetcher = (url: string) => {
@@ -71,19 +75,22 @@ interface StaffSectionProps {
   selectedBranch: Branch | null;
   onSelectBranch: (branch: Branch | null) => void;
   onViewReports: (user: User, mode: 'pending' | 'finished') => void;
+  onViewOwnerData: (ownerId: string, dataType: 'products' | 'productSales' | 'withdrawals') => void;
 }
 
 export default function StaffSection({ 
   ownerId, 
   selectedBranch, 
   onSelectBranch, 
-  onViewReports 
+  onViewReports,
+  onViewOwnerData
 }: StaffSectionProps) {
   const [expandedRoles, setExpandedRoles] = useState<Record<string, boolean>>({
     admin: false,
     barber: false,
     washer: false
   });
+  const [dropdownStates, setDropdownStates] = useState<Record<string, boolean>>({});
 
   // Fetch all branches for this owner
   const { data: branches = [], isLoading: loadingBranches, error: branchesError } = useSWR(
@@ -189,6 +196,21 @@ export default function StaffSection({
     setExpandedRoles(prev => ({
       ...prev,
       [role]: !prev[role]
+    }));
+  };
+
+  const toggleDropdown = (userId: string) => {
+    setDropdownStates(prev => ({
+      ...prev,
+      [userId]: !prev[userId]
+    }));
+  };
+
+  const handleDataSelection = (userId: string, dataType: 'products' | 'productSales' | 'withdrawals') => {
+    onViewOwnerData(userId, dataType);
+    setDropdownStates(prev => ({
+      ...prev,
+      [userId]: false
     }));
   };
               
@@ -327,21 +349,57 @@ export default function StaffSection({
                                                   </div>
                         
                         <div className="user-actions">
-                                                    <button
+                          {user.role === 'admin' && (
+                            <div className="dropdown-container">
+                              <button
+                                onClick={() => toggleDropdown(user._id)}
+                                className="action-button dropdown"
+                              >
+                                <span>Select to view</span>
+                                <ChevronDownIcon className="w-4 h-4 ml-2" />
+                              </button>
+                              {dropdownStates[user._id] && (
+                                <div className="dropdown-menu">
+                                  <button
+                                    onClick={() => handleDataSelection(user._id, 'products')}
+                                    className="dropdown-item"
+                                  >
+                                    <Package className="w-4 h-4 mr-2" />
+                                    Products
+                                  </button>
+                                  <button
+                                    onClick={() => handleDataSelection(user._id, 'productSales')}
+                                    className="dropdown-item"
+                                  >
+                                    <ShoppingCart className="w-4 h-4 mr-2" />
+                                    Product Sales
+                                  </button>
+                                  <button
+                                    onClick={() => handleDataSelection(user._id, 'withdrawals')}
+                                    className="dropdown-item"
+                                  >
+                                    <DollarSign className="w-4 h-4 mr-2" />
+                                    Withdrawals
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <button
                             onClick={() => navigateToReports(user, 'pending')}
                             className="action-button primary"
                           >
                             <Eye className="w-4 h-4 mr-2" />
                             {getStatusDisplayName('pending')} Reports
                           </button>
-                                      <button
+                          <button
                             onClick={() => navigateToReports(user, 'finished')}
                             className="action-button secondary"
                           >
                             <BarChart3 className="w-4 h-4 mr-2" />
                             {getStatusDisplayName('finished')} Reports
-                                      </button>
-                                  </div>
+                          </button>
+                        </div>
                                 </div>
                     ))}
                                                     </div>
@@ -760,6 +818,59 @@ export default function StaffSection({
 
         .action-button.secondary:hover {
           background: rgba(102, 126, 234, 0.15);
+        }
+
+        .action-button.dropdown {
+          background: linear-gradient(135deg, #667eea, #764ba2);
+          color: white;
+          position: relative;
+        }
+
+        .action-button.dropdown:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        }
+
+        .dropdown-container {
+          position: relative;
+        }
+
+        .dropdown-menu {
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+          border: 1px solid rgba(0, 0, 0, 0.1);
+          z-index: 1000;
+          overflow: hidden;
+          margin-top: 0.25rem;
+        }
+
+        .dropdown-item {
+          display: flex;
+          align-items: center;
+          width: 100%;
+          padding: 0.75rem 1rem;
+          border: none;
+          background: transparent;
+          color: #1e293b;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+          text-align: left;
+        }
+
+        .dropdown-item:hover {
+          background: rgba(102, 126, 234, 0.1);
+          color: #667eea;
+        }
+
+        .dropdown-item:not(:last-child) {
+          border-bottom: 1px solid rgba(0, 0, 0, 0.05);
         }
 
         .error-state {

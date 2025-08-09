@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Eye, EyeOff, Smartphone, Lock, Scissors } from "lucide-react";
 
 export default function LoginPage() {
@@ -7,6 +7,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -29,6 +35,68 @@ export default function LoginPage() {
       alert(data.error || "Login failed");
     }
   };
+
+  // Don't render until mounted to prevent hydration mismatch
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4">
+        <div className="container">
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl shadow-lg mb-3">
+              <Scissors className="w-6 h-6 text-white" />
+            </div>
+            <h1 className="text-lg font-bold text-slate-800 mb-1">
+              Barbershop Pro
+            </h1>
+            <p className="text-slate-600 text-xs">
+              Professional Management System
+            </p>
+          </div>
+          <div className="heading">Sign In</div>
+          <div className="form">
+            <div className="relative">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                <Smartphone className="w-4 h-4" />
+              </div>
+              <input
+                required
+                className="input pl-12"
+                type="tel"
+                name="phone"
+                id="phone"
+                placeholder="Phone Number"
+                autoComplete="tel"
+                inputMode="tel"
+                disabled
+              />
+            </div>
+            <div className="relative">
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                <Lock className="w-4 h-4" />
+              </div>
+              <input
+                required
+                className="input pl-12 pr-12"
+                type="password"
+                name="password"
+                id="password"
+                placeholder="Password"
+                autoComplete="current-password"
+                disabled
+              />
+            </div>
+            <button
+              className="login-button"
+              type="submit"
+              disabled
+            >
+              Sign In
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4">
@@ -65,6 +133,7 @@ export default function LoginPage() {
               onChange={e => setPhone(e.target.value)}
               autoComplete="tel"
               inputMode="tel"
+              suppressHydrationWarning
             />
           </div>
 
@@ -83,11 +152,13 @@ export default function LoginPage() {
               value={password}
               onChange={e => setPassword(e.target.value)}
               autoComplete="current-password"
+              suppressHydrationWarning
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+              suppressHydrationWarning
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>

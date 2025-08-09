@@ -2,6 +2,7 @@
 import React, { useState } from "react";
 import EthiopianDate from "@/components/EthiopianDate";
 import { gregorianToEthiopian } from "@/utils/ethiopianCalendar";
+import Modal from "@/components/ui/modal";
 import {
   ArrowLeft,
   Calendar,
@@ -69,6 +70,19 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
   const [expandedOperations, setExpandedOperations] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
   const [updateProgress, setUpdateProgress] = useState({ current: 0, total: 0, isUpdating: false });
+  
+  // Modal state
+  const [modal, setModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "info"
+  });
 
   // Get operations based on user role
   const getOperations = (): ServiceOperation[] => {
@@ -79,6 +93,10 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
     } else {
       return selectedUser.serviceOperations || [];
     }
+  };
+
+  const closeModal = () => {
+    setModal(prev => ({ ...prev, isOpen: false }));
   };
 
   // Group operations by Ethiopian date with numbering (only pending operations)
@@ -222,11 +240,21 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
       
       // Show success message with correct count
       const operationText = selectedCount === 1 ? 'operation' : 'operations';
-      alert(`${selectedCount} ${operationText} marked as finished successfully!`);
+      setModal({
+        isOpen: true,
+        title: "Success",
+        message: `${selectedCount} ${operationText} marked as finished successfully!`,
+        type: "success"
+      });
       
     } catch (error) {
       console.error("Error updating operations:", error instanceof Error ? error.message : "Unknown error");
-      alert("Error updating operations. Please try again.");
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: "Error updating operations. Please try again.",
+        type: "error"
+      });
     } finally {
       setIsLoading(false);
       setUpdateProgress({ current: 0, total: 0, isUpdating: false });
@@ -1427,6 +1455,17 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
           }
         }
       `}</style>
+      
+      {/* Modal */}
+      <Modal
+        isOpen={modal.isOpen}
+        onClose={closeModal}
+        title={modal.title}
+        message={modal.message}
+        type={modal.type}
+        autoClose={modal.type === "success"}
+        autoCloseDelay={3000}
+      />
     </div>
   );
 } 

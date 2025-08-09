@@ -21,6 +21,30 @@ interface AdminServiceOperation {
   workerId: mongoose.Types.ObjectId;
 }
 
+interface Product {
+  name: string;
+  quantity: number;
+  quantityType: 'pack' | 'single' | 'box' | 'bottle' | 'piece';
+  pricePerUnit: number;
+  totalPrice: number;
+  createdAt: Date;
+}
+
+interface ProductSale {
+  productName: string;
+  soldQuantity: number;
+  pricePerUnit: number;
+  totalSoldMoney: number;
+  productId: string;
+  createdAt: Date;
+}
+
+interface Withdrawal {
+  reason: string;
+  amount: number;
+  createdAt: Date;
+}
+
 interface UserDocument extends mongoose.Document {
   name: string;
   phone: string;
@@ -29,6 +53,9 @@ interface UserDocument extends mongoose.Document {
   branchId?: mongoose.Types.ObjectId;
   serviceOperations: ServiceOperation[];
   adminServiceOperations: AdminServiceOperation[];
+  products: Product[];
+  productSales: ProductSale[];
+  withdrawals: Withdrawal[];
 }
 
 // Simple service operation schema for workers
@@ -53,6 +80,53 @@ const adminServiceOperationSchema = new mongoose.Schema({
   workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
 }, { _id: false });
 
+// Product schema as subcollection
+const productSchema = new mongoose.Schema({
+  name: { 
+    type: String, 
+    default: "Product",
+    trim: true 
+  },
+  quantity: { 
+    type: Number, 
+    default: 0,
+    min: 0 
+  },
+  quantityType: { 
+    type: String, 
+    enum: ['pack', 'single', 'box', 'bottle', 'piece'], 
+    default: 'single'
+  },
+  pricePerUnit: { 
+    type: Number, 
+    default: 0,
+    min: 0 
+  },
+  totalPrice: { 
+    type: Number, 
+    default: 0,
+    min: 0 
+  },
+  createdAt: { type: Date, default: Date.now }
+}, { _id: true });
+
+// Product sale schema as separate subcollection
+const productSaleSchema = new mongoose.Schema({
+  productName: { type: String, default: "Product" },
+  soldQuantity: { type: Number, default: 1, min: 1 },
+  pricePerUnit: { type: Number, default: 0, min: 0 },
+  totalSoldMoney: { type: Number, default: 0, min: 0 },
+  productId: { type: String, default: "product" },
+  createdAt: { type: Date, default: Date.now }
+}, { _id: true });
+
+// Withdrawal schema as separate subcollection
+const withdrawalSchema = new mongoose.Schema({
+  reason: { type: String, default: "Withdrawal", trim: true },
+  amount: { type: Number, default: 0, min: 0 },
+  createdAt: { type: Date, default: Date.now }
+}, { _id: true });
+
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   phone: { type: String, unique: true },
@@ -60,14 +134,40 @@ const userSchema = new mongoose.Schema({
   role: { type: String, enum: ["owner", "admin", "barber", "washer", "customer"], default: "customer" },
   branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch" }, // Only required for admin/barber/washer
   serviceOperations: { type: [serviceOperationSchema], default: [] }, // Worker service operations
-  adminServiceOperations: { type: [adminServiceOperationSchema], default: [] } // Admin service operations
+  adminServiceOperations: { type: [adminServiceOperationSchema], default: [] }, // Admin service operations
+  products: { type: [productSchema], default: [] }, // Products subcollection
+  productSales: { type: [productSaleSchema], default: [] }, // Product sales subcollection
+  withdrawals: { type: [withdrawalSchema], default: [] } // Withdrawals subcollection
 }, { timestamps: true });
 
-// Ensure adminServiceOperations field exists for existing documents
+// Ensure subcollections exist for existing documents
 userSchema.pre('save', function(next) {
   if (this.role === 'admin' && !this.adminServiceOperations) {
     (this as UserDocument).adminServiceOperations = [];
   }
+  if (this.role === 'admin' && !this.products) {
+    (this as UserDocument).products = [];
+  }
+  if (this.role === 'admin' && !this.productSales) {
+    (this as UserDocument).productSales = [];
+  }
+  if (this.role === 'admin' && !this.withdrawals) {
+    (this as UserDocument).withdrawals = [];
+  }
+  next();
+});
+
+// Calculate total price before saving products
+productSchema.pre('save', function(next) {
+  const product = this as any;
+  product.totalPrice = product.quantity * product.pricePerUnit;
+  next();
+});
+
+// Calculate total sold money before saving product sales
+productSaleSchema.pre('save', function(next) {
+  const productSale = this as any;
+  productSale.totalSoldMoney = productSale.soldQuantity * productSale.pricePerUnit;
   next();
 });
 

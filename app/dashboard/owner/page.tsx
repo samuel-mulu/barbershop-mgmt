@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import BranchesSection from "./components/BranchesSection";
 import StaffSection from "./components/StaffSection";
 import ReportsSection from "./components/ReportsSection";
+import OwnerDataSection from "./components/OwnerDataSection";
 import { 
   Building2, 
   Users, 
@@ -49,10 +50,12 @@ interface User {
 export default function OwnerDashboard() {
   // ===== STATE MANAGEMENT =====
   const [ownerId, setOwnerId] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<'branches' | 'staff' | 'reports'>('branches');
+  const [activeSection, setActiveSection] = useState<'branches' | 'staff' | 'reports' | 'ownerData'>('branches');
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [viewMode, setViewMode] = useState<'pending' | 'finished'>('pending');
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null);
+  const [selectedDataType, setSelectedDataType] = useState<'products' | 'productSales' | 'withdrawals' | null>(null);
 
   // ===== INITIALIZATION =====
   useEffect(() => {
@@ -78,6 +81,18 @@ export default function OwnerDashboard() {
 
   const handleBackToStaff = () => {
     setSelectedUser(null);
+    setActiveSection('staff');
+  };
+
+  const handleViewOwnerData = (ownerId: string, dataType: 'products' | 'productSales' | 'withdrawals') => {
+    setSelectedOwnerId(ownerId);
+    setSelectedDataType(dataType);
+    setActiveSection('ownerData');
+  };
+
+  const handleBackToStaffFromOwnerData = () => {
+    setSelectedOwnerId(null);
+    setSelectedDataType(null);
     setActiveSection('staff');
   };
 
@@ -159,6 +174,7 @@ export default function OwnerDashboard() {
             selectedBranch={selectedBranch}
             onSelectBranch={handleSelectBranch}
             onViewReports={handleViewReports}
+            onViewOwnerData={handleViewOwnerData}
           />
         )}
         
@@ -167,6 +183,14 @@ export default function OwnerDashboard() {
             selectedUser={selectedUser}
             onBackToStaff={handleBackToStaff}
             viewMode={viewMode}
+          />
+        )}
+        
+        {activeSection === 'ownerData' && selectedOwnerId && selectedDataType && (
+          <OwnerDataSection 
+            ownerId={selectedOwnerId}
+            dataType={selectedDataType}
+            onBackToStaff={handleBackToStaffFromOwnerData}
           />
         )}
       </div>

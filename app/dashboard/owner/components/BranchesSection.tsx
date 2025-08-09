@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import useSWR from "swr";
+import Modal from "@/components/ui/modal";
 
 import {
   Building2,
@@ -82,6 +83,19 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
   }
   
   const [editingService, setEditingService] = useState<EditingService | null>(null);
+  
+  // Modal state
+  const [modal, setModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "info"
+  });
 
   // Fetch all branches for this owner
   const { data: branches = [], isLoading: loadingBranches, mutate: mutateBranches, error: branchesError } = useSWR(
@@ -112,6 +126,10 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
   const getUsersByRole = (branchId: string, role: string) => {
     const branchUsers = usersByBranch[branchId] || [];
     return branchUsers.filter((user: User) => user.role === role);
+  };
+
+  const closeModal = () => {
+    setModal(prev => ({ ...prev, isOpen: false }));
   };
 
   // Toggle branch expansion
@@ -162,13 +180,29 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
 
       if (response.ok) {
         mutateBranches();
+        setModal({
+          isOpen: true,
+          title: "Success",
+          message: "Service deleted successfully!",
+          type: "success"
+        });
       } else {
         const errorData = await response.json();
-        alert(`Failed to delete service: ${errorData.error || 'Unknown error'}`);
+        setModal({
+          isOpen: true,
+          title: "Error",
+          message: `Failed to delete service: ${errorData.error || 'Unknown error'}`,
+          type: "error"
+        });
       }
     } catch (error) {
       console.error("Error deleting service:", error instanceof Error ? error.message : "Unknown error");
-      alert("Error deleting service");
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: "Error deleting service",
+        type: "error"
+      });
     }
   };
 
@@ -178,7 +212,12 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        alert("No authentication token found. Please log in again.");
+        setModal({
+          isOpen: true,
+          title: "Authentication Error",
+          message: "No authentication token found. Please log in again.",
+          type: "error"
+        });
         return;
       }
 
@@ -202,14 +241,30 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         console.log('Service updated successfully');
         setEditingService(null);
         mutateBranches();
+        setModal({
+          isOpen: true,
+          title: "Success",
+          message: "Service updated successfully!",
+          type: "success"
+        });
       } else {
         const errorData = await response.json();
         console.error('Update failed:', errorData);
-        alert(`Failed to update service: ${errorData.error || 'Unknown error'}`);
+        setModal({
+          isOpen: true,
+          title: "Error",
+          message: `Failed to update service: ${errorData.error || 'Unknown error'}`,
+          type: "error"
+        });
       }
     } catch (error) {
       console.error("Error updating service:", error instanceof Error ? error.message : "Unknown error");
-      alert("Error updating service");
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: "Error updating service",
+        type: "error"
+      });
     }
   };
 
@@ -220,7 +275,12 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        alert("No authentication token found. Please log in again.");
+        setModal({
+          isOpen: true,
+          title: "Authentication Error",
+          message: "No authentication token found. Please log in again.",
+          type: "error"
+        });
         return;
       }
 
@@ -243,14 +303,30 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         setBranchName("");
         setShowCreateBranch(false);
         mutateBranches();
+        setModal({
+          isOpen: true,
+          title: "Success",
+          message: "Branch created successfully!",
+          type: "success"
+        });
       } else {
         const errorData = await response.json();
         console.error('Create branch failed:', errorData);
-        alert(`Failed to create branch: ${errorData.error || 'Unknown error'}`);
+        setModal({
+          isOpen: true,
+          title: "Error",
+          message: `Failed to create branch: ${errorData.error || 'Unknown error'}`,
+          type: "error"
+        });
       }
     } catch (error) {
       console.error("Error creating branch:", error instanceof Error ? error.message : "Unknown error");
-      alert("Error creating branch");
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: "Error creating branch",
+        type: "error"
+      });
     } finally {
       // setCreating(false);
     }
@@ -262,7 +338,12 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
     try {
       const token = localStorage.getItem("token");
       if (!token) {
-        alert("No authentication token found. Please log in again.");
+        setModal({
+          isOpen: true,
+          title: "Authentication Error",
+          message: "No authentication token found. Please log in again.",
+          type: "error"
+        });
         return;
       }
 
@@ -292,14 +373,30 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         setWasherPrice("");
         setShowAddService(false);
         mutateBranches();
+        setModal({
+          isOpen: true,
+          title: "Success",
+          message: "Service added successfully!",
+          type: "success"
+        });
       } else {
         const errorData = await response.json();
         console.error('Add service failed:', errorData);
-        alert(`Failed to add service: ${errorData.error || 'Unknown error'}`);
+        setModal({
+          isOpen: true,
+          title: "Error",
+          message: `Failed to add service: ${errorData.error || 'Unknown error'}`,
+          type: "error"
+        });
       }
     } catch (error) {
       console.error("Error adding service:", error instanceof Error ? error.message : "Unknown error");
-      alert("Error adding service");
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: "Error adding service",
+        type: "error"
+      });
     }
   };
 
@@ -1458,6 +1555,17 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
           }
         }
       `}</style>
+      
+      {/* Modal */}
+      <Modal
+        isOpen={modal.isOpen}
+        onClose={closeModal}
+        title={modal.title}
+        message={modal.message}
+        type={modal.type}
+        autoClose={modal.type === "success"}
+        autoCloseDelay={3000}
+      />
     </div>
   );
 } 

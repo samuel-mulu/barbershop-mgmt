@@ -4,18 +4,29 @@ import useSWR from "swr";
 import { useState, useEffect } from "react";
 import { getUserFromLocalStorage } from "@/utils/auth";
 import EthiopianDate from "@/components/EthiopianDate";
-import { 
-  Users, 
-  Calendar, 
-  TrendingUp, 
-  DollarSign, 
-  Clock, 
-  CheckCircle, 
+import Modal from "@/components/ui/modal";
+import {
+  Users,
+  Calendar,
+  TrendingUp,
+  DollarSign,
+  Clock,
+  CheckCircle,
   AlertCircle,
   Plus,
   BarChart3,
-  LogOut
+  LogOut,
+  Package,
+  ShoppingCart,
+  Eye,
+  EyeOff,
+  Menu,
+  X
 } from "lucide-react";
+import ProductManagement from "@/components/ProductManagement";
+import SalesManagement from "@/components/SalesManagement";
+import OfflineProvider from "../../../providers/OfflineProvider";
+import OfflineBanner, { OfflineIndicator } from "../../../components/OfflineBanner";
 
 const fetcher = (url: string) => {
   const token = localStorage.getItem("token");
@@ -117,6 +128,27 @@ export default function AdminDashboard() {
   const [selectedWasherId, setSelectedWasherId] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
   const [showHistory, setShowHistory] = useState<boolean>(false);
+  
+  // Toggle states for Add Product and Record Sale
+  const [activeSection, setActiveSection] = useState<'none' | 'addProduct' | 'recordSale' | 'history'>('none');
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  
+  // Summary data states
+  const [productsSummary, setProductsSummary] = useState<{ count: number; totalValue: number }>({ count: 0, totalValue: 0 });
+  const [salesSummary, setSalesSummary] = useState<{ productSales: number; withdrawals: number; totalRevenue: number }>({ productSales: 0, withdrawals: 0, totalRevenue: 0 });
+  
+  // Modal state
+  const [modal, setModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "success" | "error" | "info";
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "info"
+  });
 
   // Get user data and branchId on component mount
   useEffect(() => {
@@ -327,20 +359,54 @@ export default function AdminDashboard() {
       if (workerResponse.ok && adminResponse.ok) {
         setSelectedServices([]);
         mutateOperations();
-        alert("Services saved successfully!");
+        console.log("Setting success modal");
+        setModal({
+          isOpen: true,
+          title: "Success",
+          message: "Services saved successfully!",
+          type: "success"
+        });
       } else {
         throw new Error("Failed to save services");
       }
     } catch (error: unknown) {
       console.error("Error saving services:", error instanceof Error ? error.message : "Unknown error");
-      alert("Error saving services. Please try again.");
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: "Error saving services. Please try again.",
+        type: "error"
+      });
     } finally {
       setSaving(false);
     }
   };
 
   const toggleHistory = () => {
-    setShowHistory(!showHistory);
+    setActiveSection(activeSection === 'history' ? 'none' : 'history');
+  };
+
+  const toggleAddProduct = () => {
+    setActiveSection(activeSection === 'addProduct' ? 'none' : 'addProduct');
+  };
+
+  const toggleRecordSale = () => {
+    setActiveSection(activeSection === 'recordSale' ? 'none' : 'recordSale');
+  };
+
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   const handleLogout = () => {
@@ -350,57 +416,227 @@ export default function AdminDashboard() {
     window.location.href = "/login";
   };
 
+  const closeModal = () => {
+    console.log("Closing modal");
+    setModal(prev => ({ ...prev, isOpen: false }));
+  };
+
   // Show loading if user data is not loaded yet
   if (!user || !branchId) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
-        <div className="container">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <p className="text-slate-600">Loading admin dashboard...</p>
+      <OfflineProvider 
+        autoSync={true}
+        syncOnMount={true}
+        enableLogging={true}
+      >
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
+          <div className="container">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-slate-600">Loading admin dashboard...</p>
+            </div>
           </div>
         </div>
-      </div>
+      </OfflineProvider>
     );
   }
 
+  // Debug logging
+  console.log('🔧 [DEBUG] Admin Dashboard - User:', user);
+  console.log('🔧 [DEBUG] Admin Dashboard - BranchId:', branchId);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="container mb-6">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div className="text-center md:text-left mb-4 md:mb-0">
-              <p className="text-slate-600 text-sm">Welcome back, {user.name}</p>
-              <p className="text-slate-500 text-xs">Branch: {branchName || branchId}</p>
+    <OfflineProvider 
+      autoSync={true}
+      syncOnMount={true}
+      enableLogging={true}
+    >
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+        <OfflineBanner 
+          position="top"
+          showWhenOnline={false}
+          showSyncStatus={true}
+          dismissible={false}
+        />
+        <div className="flex">
+        {/* Sidebar */}
+        <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+          <div className="sidebar-header">
+            <div className="user-info">
+              <p className="user-name">Welcome back, {user.name}</p>
+              <p className="branch-name">Branch: {branchName || branchId}</p>
             </div>
-            <div className="header-buttons-grid">
-              <button
-                onClick={toggleHistory}
-                className="header-button"
-              >
-                <BarChart3 className="w-4 h-4 mr-2" />
-                {showHistory ? "Hide History" : "View History"}
+            <button
+              onClick={toggleSidebar}
+              className="close-sidebar-btn"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          
+          <div className="sidebar-content">
+            <button
+              onClick={toggleAddProduct}
+              className={`sidebar-button ${activeSection === 'addProduct' ? 'active' : ''}`}
+            >
+              <Package className="w-4 h-4 mb-1" />
+              <span>{activeSection === 'addProduct' ? "Hide" : "Add"}</span>
+            </button>
+            
+            <button
+              onClick={toggleRecordSale}
+              className={`sidebar-button ${activeSection === 'recordSale' ? 'active' : ''}`}
+            >
+              <ShoppingCart className="w-4 h-4 mb-1" />
+              <span>{activeSection === 'recordSale' ? "Hide" : "Sale"}</span>
+            </button>
+            
+            <button
+              onClick={toggleHistory}
+              className={`sidebar-button ${activeSection === 'history' ? 'active' : ''}`}
+            >
+              <BarChart3 className="w-4 h-4 mb-1" />
+              <span>{activeSection === 'history' ? "Hide" : "History"}</span>
+            </button>
+            
+            <Link href="/dashboard/admin/view-appointments">
+              <button className="sidebar-button">
+                <Calendar className="w-4 h-4 mb-1" />
+                <span>Appointments</span>
               </button>
-              <Link href="/dashboard/admin/view-appointments">
-                <button className="header-button">
-                  <Calendar className="w-4 h-4 mr-2" />
-                  View Appointments
-                </button>
-              </Link>
-              <button
-                onClick={handleLogout}
-                className="header-button bg-red-500 hover:bg-red-600 text-white"
-              >
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
-              </button>
-            </div>
+            </Link>
+            
+            <button
+              onClick={handleLogout}
+              className="sidebar-button logout"
+            >
+              <LogOut className="w-4 h-4 mb-1" />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
 
+        {/* Main Content */}
+        <div className={`main-content ${sidebarOpen ? 'sidebar-open' : ''}`}>
+          {/* Top Bar */}
+          <div className="top-bar">
+            <button
+              onClick={toggleSidebar}
+              className="menu-button"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="top-bar-info">
+              <p className="welcome-text">Welcome back, {user.name}</p>
+              <p className="branch-text">Branch: {branchName || branchId}</p>
+            </div>
+            <div className="flex items-center space-x-3">
+              <OfflineIndicator className="text-sm" />
+            </div>
+          </div>
+
+        {/* Add Product Section */}
+        {activeSection === 'addProduct' && (
+          <div className="container mb-6">
+            <h2 className="section-title">Add Product</h2>
+            
+            {/* Summary Cards */}
+            <div className="summary-cards-grid">
+              <div className="summary-card-small">
+                <div className="summary-icon-small bg-green-300">
+                  <Package className="w-4 h-4 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="summary-label-small">Total Products</h3>
+                  <p className="summary-value-small text-green-600">{productsSummary.count}</p>
+                </div>
+              </div>
+              <div className="summary-card-small">
+                <div className="summary-icon-small bg-blue-300">
+                  <DollarSign className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="summary-label-small">Total Value</h3>
+                  <p className="summary-value-small text-blue-600">${productsSummary.totalValue.toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+
+            <ProductManagement 
+              onSuccess={() => {
+                setModal({
+                  isOpen: true,
+                  title: "Success",
+                  message: "Product added successfully!",
+                  type: "success"
+                });
+              }}
+              onDataChange={(products) => {
+                const count = products.length;
+                const totalValue = products.reduce((sum, product) => sum + product.totalPrice, 0);
+                setProductsSummary({ count, totalValue });
+              }}
+            />
+          </div>
+        )}
+
+        {/* Record Sale Section */}
+        {activeSection === 'recordSale' && (
+          <div className="container mb-6">
+            <h2 className="section-title">Record Sale</h2>
+            
+            {/* Summary Cards */}
+            <div className="summary-cards-grid">
+              <div className="summary-card-small">
+                <div className="summary-icon-small bg-green-300">
+                  <ShoppingCart className="w-4 h-4 text-green-600" />
+                </div>
+                <div>
+                  <h3 className="summary-label-small">Product Sales</h3>
+                  <p className="summary-value-small text-green-600">{salesSummary.productSales}</p>
+                </div>
+              </div>
+              <div className="summary-card-small">
+                <div className="summary-icon-small bg-orange-300">
+                  <DollarSign className="w-4 h-4 text-orange-600" />
+                </div>
+                <div>
+                  <h3 className="summary-label-small">Withdrawals</h3>
+                  <p className="summary-value-small text-orange-600">{salesSummary.withdrawals}</p>
+                </div>
+              </div>
+              <div className="summary-card-small">
+                <div className="summary-icon-small bg-blue-300">
+                  <TrendingUp className="w-4 h-4 text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="summary-label-small">Total Revenue</h3>
+                  <p className="summary-value-small text-blue-600">${salesSummary.totalRevenue.toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+
+            <SalesManagement 
+              onSuccess={() => {
+                setModal({
+                  isOpen: true,
+                  title: "Success",
+                  message: "Sale recorded successfully!",
+                  type: "success"
+                });
+              }}
+              onDataChange={(productSales, withdrawals) => {
+                const productSalesCount = productSales.length;
+                const withdrawalsCount = withdrawals.length;
+                const totalRevenue = productSales.reduce((sum, sale) => sum + sale.totalSoldMoney, 0);
+                setSalesSummary({ productSales: productSalesCount, withdrawals: withdrawalsCount, totalRevenue });
+              }}
+            />
+          </div>
+        )}
+
         {/* History Section */}
-        {showHistory && (
+        {activeSection === 'history' && (
           <div className="container mb-6">
             <h2 className="section-title">Service Operations History</h2>
             
@@ -463,7 +699,7 @@ export default function AdminDashboard() {
                   </thead>
                   <tbody>
                     {safeServiceOperationsHistory.map((operation: ServiceOperation, index: number) => (
-                      <tr key={operation._id || `operation_${index}_${Date.now()}`}>
+                      <tr key={operation._id || `operation_${index}_${operation.workerName}_${operation.createdAt}`}>
                         <td className="font-medium">{operation.name || 'N/A'}</td>
                         <td>
                           <span className="price-text">
@@ -514,7 +750,7 @@ export default function AdminDashboard() {
                   >
                     <option value="">Select Service</option>
                     {services.map((service: Service, index: number) => (  
-                      <option key={service.name || index} value={service.name}>
+                      <option key={`${service.name}_${index}`} value={service.name}>
                         {service.name}
                       </option>
                     ))}
@@ -534,7 +770,7 @@ export default function AdminDashboard() {
                     >
                       <option value="">Select Barber</option>
                       {barbersList.map((barber: Barber) => (  
-                        <option key={barber._id || barber.name} value={barber._id}>
+                        <option key={barber._id} value={barber._id}>
                           {barber.name}
                         </option>
                       ))}
@@ -555,7 +791,7 @@ export default function AdminDashboard() {
                     >
                       <option value="">Select Washer</option>
                       {washersList.map((washer: Washer) => (  
-                        <option key={washer._id || washer.name} value={washer._id}>
+                        <option key={washer._id} value={washer._id}>
                           {washer.name}
                         </option>
                       ))}
@@ -664,6 +900,7 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+        </div>
       </div>
 
       <style jsx>{`
@@ -764,6 +1001,177 @@ export default function AdminDashboard() {
         .header-button:hover {
           transform: translateY(-1px);
           box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 8px 15px -5px;
+        }
+
+        .header-button.active {
+          background: linear-gradient(45deg, rgb(34, 197, 94) 0%, rgb(16, 185, 129) 100%);
+          transform: translateY(-1px);
+          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 8px 15px -5px;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+          position: fixed;
+          top: 0;
+          left: -80px;
+          width: 80px;
+          height: 100vh;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          transition: left 0.3s ease;
+          z-index: 1000;
+          box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar.open {
+          left: 0;
+        }
+
+        .sidebar-header {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 15px 10px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .user-info {
+          text-align: center;
+          margin-bottom: 10px;
+        }
+
+        .user-name {
+          font-size: 10px;
+          font-weight: 600;
+          margin: 0 0 2px 0;
+          line-height: 1.2;
+        }
+
+        .branch-name {
+          font-size: 8px;
+          opacity: 0.8;
+          margin: 0;
+          line-height: 1.2;
+        }
+
+        .close-sidebar-btn {
+          background: rgba(255, 255, 255, 0.1);
+          border: none;
+          color: white;
+          padding: 6px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+          font-size: 10px;
+        }
+
+        .close-sidebar-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+
+        .sidebar-content {
+          padding: 10px 5px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .sidebar-button {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          padding: 8px 4px;
+          background: rgba(255, 255, 255, 0.1);
+          border: none;
+          color: white;
+          border-radius: 8px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          text-decoration: none;
+          font-size: 8px;
+          min-height: 50px;
+        }
+
+        .sidebar-button:hover {
+          background: rgba(255, 255, 255, 0.2);
+          transform: translateY(-2px);
+        }
+
+        .sidebar-button.active {
+          background: rgba(255, 255, 255, 0.25);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .sidebar-button.logout {
+          margin-top: auto;
+          background: rgba(239, 68, 68, 0.8);
+        }
+
+        .sidebar-button.logout:hover {
+          background: rgba(239, 68, 68, 1);
+        }
+
+        /* Main Content */
+        .main-content {
+          flex: 1;
+          margin-left: 0;
+          transition: margin-left 0.3s ease;
+          min-height: 100vh;
+          padding: 20px;
+        }
+
+        .main-content.sidebar-open {
+          margin-left: 80px;
+        }
+
+        /* Top Bar */
+        .top-bar {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 24px;
+          padding: 16px 24px;
+          background: white;
+          border-radius: 16px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .menu-button {
+          background: linear-gradient(45deg, rgb(16, 137, 211) 0%, rgb(18, 177, 209) 100%);
+          color: white;
+          border: none;
+          padding: 12px;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .menu-button:hover {
+          transform: scale(1.05);
+          box-shadow: 0 4px 12px rgba(16, 137, 211, 0.3);
+        }
+
+        .top-bar-info {
+          flex: 1;
+        }
+
+        .welcome-text {
+          font-size: 16px;
+          font-weight: 600;
+          color: #1e293b;
+          margin: 0 0 4px 0;
+        }
+
+        .branch-text {
+          font-size: 14px;
+          color: #64748b;
+          margin: 0;
         }
 
         .summary-card {
@@ -1067,6 +1475,18 @@ export default function AdminDashboard() {
           transform: scale(1.05);
         }
       `}</style>
-    </div>
+      
+      {/* Modal */}
+      <Modal
+        isOpen={modal.isOpen}
+        onClose={closeModal}
+        title={modal.title}
+        message={modal.message}
+        type={modal.type}
+        autoClose={modal.type === "success"}
+        autoCloseDelay={3000}
+      />
+      </div>
+    </OfflineProvider>
   );
 } 
