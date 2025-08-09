@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Package, Plus, Eye, EyeOff } from "lucide-react";
+import { Package, Eye, EyeOff, WifiOff } from "lucide-react";
+import { useOfflineQueue } from "../../providers/OfflineProvider";
 
 interface Product {
   _id: string;
@@ -27,6 +28,9 @@ export default function ProductManagement({ onSuccess, onDataChange }: ProductMa
     quantityType: "single" as "pack" | "single" | "box" | "bottle" | "piece",
     pricePerUnit: 0
   });
+
+  // Offline functionality
+  const { isOffline, pendingCount, queueProduct } = useOfflineQueue();
 
   const fetchProducts = async () => {
     try {
@@ -60,6 +64,33 @@ export default function ProductManagement({ onSuccess, onDataChange }: ProductMa
     setLoading(true);
 
     try {
+      const productData = {
+        ...formData,
+        totalPrice: formData.quantity * formData.pricePerUnit
+      };
+
+      // If offline, queue the operation
+      if (isOffline) {
+        console.log('📱 [OFFLINE] Queueing product operation:', productData);
+        await queueProduct(productData);
+        
+        // Reset form
+        setFormData({
+          name: "",
+          quantity: 0,
+          quantityType: "single",
+          pricePerUnit: 0
+        });
+        
+        if (onSuccess) {
+          onSuccess();
+        }
+        
+        console.log('✅ [OFFLINE] Product queued successfully');
+        return;
+      }
+
+      // Online - proceed with normal submission
       const token = localStorage.getItem('token');
       const response = await fetch('/api/products', {
         method: 'POST',
@@ -67,7 +98,7 @@ export default function ProductManagement({ onSuccess, onDataChange }: ProductMa
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(productData)
       });
 
       if (response.ok) {
@@ -89,7 +120,36 @@ export default function ProductManagement({ onSuccess, onDataChange }: ProductMa
       }
     } catch (error) {
       console.error('Error adding product:', error);
-      alert('Failed to add product');
+      
+      // If online submission fails, try to queue offline
+      if (!isOffline) {
+        try {
+          const productData = {
+            ...formData,
+            totalPrice: formData.quantity * formData.pricePerUnit
+          };
+          
+          await queueProduct(productData);
+          console.log('📱 [FALLBACK] Product queued after online failure');
+          
+          // Reset form
+          setFormData({
+            name: "",
+            quantity: 0,
+            quantityType: "single",
+            pricePerUnit: 0
+          });
+          
+          if (onSuccess) {
+            onSuccess();
+          }
+        } catch (queueError) {
+          console.error('Failed to queue product:', queueError);
+          alert('Failed to add product');
+        }
+      } else {
+        alert('Failed to add product');
+      }
     } finally {
       setLoading(false);
     }
@@ -194,10 +254,47 @@ export default function ProductManagement({ onSuccess, onDataChange }: ProductMa
           <button
             type="submit"
             disabled={loading}
-            className="w-full px-4 py-3 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 focus:outline-none focus:bg-green-700 disabled:opacity-50 transition-colors"
+            className={`w-full px-4 py-3 text-sm font-medium text-white rounded-lg focus:outline-none disabled:opacity-50 transition-colors ${
+              isOffline 
+                ? 'bg-amber-600 hover:bg-amber-700 focus:bg-amber-700'
+                : 'bg-green-600 hover:bg-green-700 focus:bg-green-700'
+            }`}
           >
-            {loading ? 'Adding...' : 'Add Product'}
+            {loading ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                {isOffline ? 'Saving Offline...' : 'Adding...'}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center">
+                {isOffline ? (
+                  <>
+                    <WifiOff className="w-4 h-4 mr-2" />
+                    Save Offline
+                  </>
+                ) : (
+                  'Add Product'
+                )}
+              </div>
+            )}
           </button>
+          
+          {/* Offline status message */}
+          {isOffline && (
+            <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <WifiOff className="w-4 h-4 text-amber-600" />
+                <p className="text-sm text-amber-700 font-medium">
+                  You are offline. Products will be saved locally and synced when connection is restored.
+                </p>
+              </div>
+              {pendingCount > 0 && (
+                <p className="text-xs text-amber-600 mt-1">
+                  {pendingCount} operations waiting to sync
+                </p>
+              )}
+            </div>
+          )}
         </form>
       </div>
 

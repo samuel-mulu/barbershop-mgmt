@@ -19,11 +19,12 @@ import {
   Package,
   ShoppingCart,
   Menu,
-  X
+  X,
+  WifiOff
 } from "lucide-react";
 import ProductManagement from "@/components/ProductManagement";
 import SalesManagement from "@/components/SalesManagement";
-import OfflineProvider from "../../../providers/OfflineProvider";
+import OfflineProvider, { useOfflineQueue } from "../../../providers/OfflineProvider";
 import OfflineBanner, { OfflineIndicator } from "../../../components/OfflineBanner";
 
 const fetcher = (url: string) => {
@@ -116,7 +117,8 @@ interface AdminServiceOperation {
   status: string;
 }
 
-export default function AdminDashboard() {
+// Internal component that has access to offline context
+function AdminDashboardContent() {
   const [user, setUser] = useState<{ _id: string; name: string; role: string; branchId: string } | null>(null);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [branchName, setBranchName] = useState<string>("");
@@ -285,6 +287,57 @@ export default function AdminDashboard() {
     
     setSaving(true);
     try {
+      // Prepare service data for offline queue
+      const serviceData = {
+        serviceOperations: selectedServices.map(service => {
+          const operations = [];
+          
+          if (service.barberId && service.barberPrice && service.barberName) {
+            operations.push({
+              name: service.serviceName,
+              price: service.barberPrice,
+              workerName: service.barberName,
+              workerRole: "barber" as const,
+              workerId: service.barberId,
+              status: "pending"
+            });
+          }
+          
+          if (service.washerId && service.washerPrice && service.washerName) {
+            operations.push({
+              name: service.serviceName,
+              price: service.washerPrice,
+              workerName: service.washerName,
+              workerRole: "washer" as const,
+              workerId: service.washerId,
+              status: "pending"
+            });
+          }
+          
+          return operations;
+        }).flat()
+      };
+
+      // If offline, queue the operation
+      if (isOffline) {
+        console.log('📱 [OFFLINE] Queueing service operations:', serviceData);
+        await queueService(serviceData);
+        
+        // Reset form
+        setSelectedServices([]);
+        mutateOperations();
+        
+        console.log('✅ [OFFLINE] Service operations queued successfully');
+        setModal({
+          isOpen: true,
+          title: "Saved Offline",
+          message: "Service operations saved locally. They will sync when connection is restored.",
+          type: "success"
+        });
+        return;
+      }
+
+      // Online - proceed with normal submission
       // Convert selected services to service operations for workers
       const workerServiceOperations: WorkerServiceOperation[] = selectedServices.map(service => {
         const operationData: WorkerServiceOperation = {
@@ -422,41 +475,34 @@ export default function AdminDashboard() {
   // Show loading if user data is not loaded yet
   if (!user || !branchId) {
     return (
-      <OfflineProvider 
-        autoSync={true}
-        syncOnMount={true}
-        enableLogging={true}
-      >
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
-          <div className="container">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-              <p className="text-slate-600">Loading admin dashboard...</p>
-            </div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <div className="container">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p className="text-slate-600">Loading admin dashboard...</p>
           </div>
         </div>
-      </OfflineProvider>
+      </div>
     );
   }
+
+  // Get offline queue functionality
+  const { isOffline, queueService } = useOfflineQueue();
 
   // Debug logging
   console.log('🔧 [DEBUG] Admin Dashboard - User:', user);
   console.log('🔧 [DEBUG] Admin Dashboard - BranchId:', branchId);
+  console.log('🔧 [DEBUG] Offline Status:', isOffline);
 
   return (
-    <OfflineProvider 
-      autoSync={true}
-      syncOnMount={true}
-      enableLogging={true}
-    >
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-        <OfflineBanner 
-          position="top"
-          showWhenOnline={false}
-          showSyncStatus={true}
-          dismissible={false}
-        />
-        <div className="flex">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+      <OfflineBanner 
+        position="top"
+        showWhenOnline={false}
+        showSyncStatus={true}
+        dismissible={false}
+      />
+      <div className="flex">
         {/* Sidebar */}
         <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
           <div className="sidebar-header">
@@ -878,20 +924,41 @@ export default function AdminDashboard() {
                     <button
                       onClick={handleFinish}
                       disabled={saving || selectedServices.length === 0}
-                      className="finish-button"
+                      className={`finish-button ${isOffline ? 'offline' : ''}`}
                     >
                       {saving ? (
                         <>
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                          Saving...
+                          {isOffline ? 'Saving Offline...' : 'Saving...'}
                         </>
                       ) : (
                         <>
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          Finish
+                          {isOffline ? (
+                            <>
+                              <WifiOff className="w-4 h-4 mr-2" />
+                              Save Offline
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              Finish
+                            </>
+                          )}
                         </>
                       )}
                     </button>
+                    
+                    {/* Offline status message */}
+                    {isOffline && selectedServices.length > 0 && (
+                      <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                        <div className="flex items-center space-x-2">
+                          <WifiOff className="w-4 h-4 text-amber-600" />
+                          <p className="text-sm text-amber-700 font-medium">
+                            You are offline. Services will be saved locally and synced when connection is restored.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1451,6 +1518,14 @@ export default function AdminDashboard() {
           transform: none;
         }
 
+        .finish-button.offline {
+          background: linear-gradient(45deg, rgb(245, 158, 11) 0%, rgb(217, 119, 6) 100%);
+        }
+
+        .finish-button.offline:hover:not(:disabled) {
+          background: linear-gradient(45deg, rgb(217, 119, 6) 0%, rgb(180, 83, 9) 100%);
+        }
+
         .loading-state, .error-state, .empty-state {
           text-align: center;
           padding: 40px 20px;
@@ -1484,7 +1559,19 @@ export default function AdminDashboard() {
         autoClose={modal.type === "success"}
         autoCloseDelay={3000}
       />
-      </div>
+    </div>
+  );
+}
+
+// Main component wrapper
+export default function AdminDashboard() {
+  return (
+    <OfflineProvider 
+      autoSync={true}
+      syncOnMount={true}
+      enableLogging={true}
+    >
+      <AdminDashboardContent />
     </OfflineProvider>
   );
 } 
