@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { ShoppingCart, DollarSign, Calendar, Eye, EyeOff, Plus, Minus, Wifi, WifiOff } from "lucide-react";
+import { ShoppingCart, DollarSign, Calendar, Eye, EyeOff, Plus, Minus, WifiOff } from "lucide-react";
 import { useOfflineQueue } from "../../providers/OfflineProvider";
 
 interface Product {
@@ -177,7 +177,7 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
       }
 
       if (response.ok) {
-        const data = await response.json();
+        await response.json();
         setSaleType('product_sale');
         setProductSalesForm([]);
         setWithdrawalReason('');
@@ -237,7 +237,7 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
     setProductSalesForm(productSalesForm.filter((_, i) => i !== index));
   };
 
-  const updateProductSale = (index: number, field: keyof ProductSaleForm, value: any) => {
+  const updateProductSale = (index: number, field: keyof ProductSaleForm, value: string | number) => {
     const updated = [...productSalesForm];
     updated[index] = { ...updated[index], [field]: value };
     setProductSalesForm(updated);
@@ -375,7 +375,7 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
                     <ShoppingCart className="w-10 h-10 text-purple-400" />
                   </div>
                   <p className="text-xl font-semibold text-purple-600 mb-3">No products selected</p>
-                  <p className="text-sm text-purple-500">Click "Add Product" to start recording sales</p>
+                  <p className="text-sm text-purple-500">Click &quot;Add Product&quot; to start recording sales</p>
                 </div>
               ) : (
                 <div className="space-y-4">

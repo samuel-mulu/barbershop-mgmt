@@ -18,8 +18,6 @@ import {
   LogOut,
   Package,
   ShoppingCart,
-  Eye,
-  EyeOff,
   Menu,
   X
 } from "lucide-react";
@@ -127,7 +125,7 @@ export default function AdminDashboard() {
   const [selectedBarberId, setSelectedBarberId] = useState<string>("");
   const [selectedWasherId, setSelectedWasherId] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
-  const [showHistory, setShowHistory] = useState<boolean>(false);
+  const [showHistory] = useState<boolean>(false);
   
   // Toggle states for Add Product and Record Sale
   const [activeSection, setActiveSection] = useState<'none' | 'addProduct' | 'recordSale' | 'history'>('none');

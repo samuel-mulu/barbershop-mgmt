@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 // Simple ping endpoint for connection health checks
 // Used by the offline system to detect connectivity
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Quick and light response for heartbeat checks
     return NextResponse.json({ 

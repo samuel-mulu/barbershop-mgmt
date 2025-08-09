@@ -9,8 +9,7 @@ import {
   AlertTriangle, 
   CheckCircle,
   X,
-  Database,
-  Sync
+  Database
 } from 'lucide-react';
 
 // Offline status banner component
