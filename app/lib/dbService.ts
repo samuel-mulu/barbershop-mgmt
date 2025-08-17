@@ -42,6 +42,69 @@ export class DatabaseService {
     return user.products?.find(product => product._id.toString() === productId);
   }
 
+  // Get product by ID globally (searches all users)
+  static async findProductById(productId: string) {
+    await connectDB();
+    const users = await User.find({ "products._id": new mongoose.Types.ObjectId(productId) });
+    for (const user of users) {
+      const product = user.products?.find(p => p._id.toString() === productId);
+      if (product) return product;
+    }
+    return null;
+  }
+
+  // Update product quantity (global search)
+  static async updateProductQuantity(productId: string, newQuantity: number) {
+    await connectDB();
+    
+    const result = await User.updateOne(
+      { "products._id": new mongoose.Types.ObjectId(productId) },
+      { 
+        $set: { 
+          "products.$.quantity": newQuantity,
+          "products.$.updatedAt": new Date()
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      throw new Error('Product not found');
+    }
+
+    return result;
+  }
+
+  // Update product quantity within specific admin context
+  static async updateProductQuantityForAdmin(adminId: string, productId: string, quantityChange: number) {
+    await connectDB();
+    
+    const user = await User.findById(adminId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (!user.products) {
+      throw new Error('Products array not found');
+    }
+
+    console.log('Looking for product with ID:', productId);
+    console.log('User products:', user.products.map(p => ({ id: p._id.toString(), name: p.name })));
+    
+    const productIndex = user.products.findIndex(product => product._id.toString() === productId);
+    if (productIndex === -1) {
+      throw new Error(`Product with ID ${productId} not found in user's products`);
+    }
+
+    const currentQuantity = user.products[productIndex].quantity;
+    const newQuantity = Math.max(0, currentQuantity + quantityChange);
+    
+    user.products[productIndex].quantity = newQuantity;
+    user.products[productIndex].updatedAt = new Date();
+    
+    await user.save();
+    return user.products[productIndex];
+  }
+
   static async updateProduct(adminId: string, productId: string, updateData: any) {
     await connectDB();
     const user = await User.findById(adminId);
@@ -124,7 +187,13 @@ export class DatabaseService {
     const user = await User.findById(adminId);
     if (!user) return null;
     
-    return user.productSales?.find(sale => sale._id.toString() === productSaleId);
+    console.log('Getting product sale by ID:', productSaleId);
+    console.log('User product sales:', user.productSales?.map(sale => ({ id: sale._id.toString(), name: sale.productName })));
+    
+    const sale = user.productSales?.find(sale => sale._id.toString() === productSaleId);
+    console.log('Found sale:', sale);
+    
+    return sale;
   }
 
   static async updateProductSale(adminId: string, productSaleId: string, updateData: any) {
@@ -162,6 +231,9 @@ export class DatabaseService {
     if (!user.productSales) {
       throw new Error('Product sales array not found');
     }
+
+    console.log('Looking for product sale with ID:', productSaleId);
+    console.log('Available product sales:', user.productSales.map(sale => ({ id: sale._id.toString(), name: sale.productName })));
 
     const saleIndex = user.productSales.findIndex(sale => sale._id.toString() === productSaleId);
     if (saleIndex === -1) {

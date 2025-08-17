@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
 
     const adminId = decoded._id;
     const body = await request.json();
+    console.log('🛒 Received request body:', body);
     const { productSales } = body;
 
     if (!productSales || !Array.isArray(productSales) || productSales.length === 0) {
@@ -53,35 +54,41 @@ export async function POST(request: NextRequest) {
     const createdSales = [];
     for (const productSale of productSales) {
       const { productId, soldQuantity } = productSale;
+      
+      console.log('🛒 Processing product sale:', productSale);
 
-      // Get product details
-      const product = await DatabaseService.getProductById(adminId, productId);
-      if (product) {
-        // Check if enough quantity is available
-        if (product.quantity < soldQuantity) {
-          return NextResponse.json(
-            { error: `Insufficient quantity for ${product.name}. Available: ${product.quantity}, Requested: ${soldQuantity}` },
-            { status: 400 }
-          );
-        }
-
-        // Create individual product sale record
-        const newProductSale = await DatabaseService.createProductSale(adminId, {
-          productName: product.name,
-          soldQuantity,
-          pricePerUnit: product.pricePerUnit,
-          totalSoldMoney: soldQuantity * product.pricePerUnit,
-          productId
-        });
-
-        createdSales.push(newProductSale);
-
-        // Update product quantity - ensure it doesn't go below 0
-        const newQuantity = Math.max(0, product.quantity - soldQuantity);
-        await DatabaseService.updateProduct(adminId, productId, {
-          quantity: newQuantity
-        });
+      // Get product details - use global search since product might belong to any admin
+      const product = await DatabaseService.findProductById(productId);
+      console.log('🛒 Found product:', product);
+      if (!product) {
+        return NextResponse.json(
+          { error: `Product not found: ${productId}` },
+          { status: 400 }
+        );
       }
+      
+      // Check if enough quantity is available
+      if (product.quantity < soldQuantity) {
+        return NextResponse.json(
+          { error: `Insufficient quantity for ${product.name}. Available: ${product.quantity}, Requested: ${soldQuantity}` },
+          { status: 400 }
+        );
+      }
+
+      // Create individual product sale record
+      const newProductSale = await DatabaseService.createProductSale(adminId, {
+        productName: product.name,
+        soldQuantity,
+        pricePerUnit: product.pricePerUnit,
+        totalSoldMoney: soldQuantity * product.pricePerUnit,
+        productId
+      });
+
+      createdSales.push(newProductSale);
+
+      // Update product quantity - ensure it doesn't go below 0
+      const newQuantity = Math.max(0, product.quantity - soldQuantity);
+      await DatabaseService.updateProductQuantity(productId, newQuantity);
     }
 
     return NextResponse.json({

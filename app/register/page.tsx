@@ -29,6 +29,12 @@ export default function RegisterPage() {
   const [branches, setBranches] = useState<Array<{ _id: string; name: string }>>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const needsBranchId = ["admin", "barber", "washer"].includes(role);
   
@@ -88,8 +94,6 @@ export default function RegisterPage() {
     }
   };
 
-
-
   const getRoleDescription = (role: string) => {
     switch (role) {
       case "owner": return "Full system access and management";
@@ -145,6 +149,37 @@ export default function RegisterPage() {
   // Show validation message for missing branch ID
   const showBranchIdError = needsBranchId && !branchId;
 
+  // Show loading skeleton while mounting to prevent hydration mismatch
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4">
+        <div className="container">
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-12 h-12 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl shadow-lg mb-3">
+              <Scissors className="w-6 h-6 text-white" />
+            </div>
+            <h1 className="text-lg font-bold text-slate-800 mb-1">
+              Barbershop Pro
+            </h1>
+            <p className="text-slate-600 text-xs">
+              Professional Management System
+            </p>
+          </div>
+          <div className="heading">Create Account</div>
+          <div className="form">
+            <div className="relative">
+              <div className="input bg-gray-100 animate-pulse" style={{ height: '50px', borderRadius: '20px' }} />
+            </div>
+            <div className="relative">
+              <div className="input bg-gray-100 animate-pulse" style={{ height: '50px', borderRadius: '20px' }} />
+            </div>
+            <div className="login-button bg-gray-300 animate-pulse" style={{ height: '50px', borderRadius: '20px' }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4">
       <div className="container">
@@ -186,16 +221,17 @@ export default function RegisterPage() {
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                   <User className="w-4 h-4" />
                 </div>
-        <input
+                <input
                   required
                   className="input pl-12"
                   type="text"
                   name="name"
                   id="name"
                   placeholder="Full Name"
-          value={name}
-          onChange={e => setName(e.target.value)}
+                  value={name}
+                  onChange={e => setName(e.target.value)}
                   autoComplete="name"
+                  suppressHydrationWarning
                 />
               </div>
 
@@ -203,17 +239,18 @@ export default function RegisterPage() {
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                   <Smartphone className="w-4 h-4" />
                 </div>
-        <input
+                <input
                   required
                   className="input pl-12"
                   type="tel"
                   name="phone"
                   id="phone"
                   placeholder="Phone Number"
-          value={phone}
-          onChange={e => setPhone(e.target.value)}
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
                   autoComplete="tel"
                   inputMode="tel"
+                  suppressHydrationWarning
                 />
               </div>
 
@@ -222,6 +259,7 @@ export default function RegisterPage() {
                 onClick={() => setStep(2)}
                 disabled={!canProceedToStep2}
                 className="login-button"
+                suppressHydrationWarning
               >
                 Next Step
                 <ArrowRight className="ml-2 w-4 h-4" />
@@ -239,21 +277,23 @@ export default function RegisterPage() {
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                   <Lock className="w-4 h-4" />
                 </div>
-        <input
+                <input
                   required
                   className="input pl-12 pr-12"
                   type={showPassword ? "text" : "password"}
                   name="password"
                   id="password"
                   placeholder="Password"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
                   autoComplete="new-password"
+                  suppressHydrationWarning
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  suppressHydrationWarning
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -273,11 +313,13 @@ export default function RegisterPage() {
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
                   autoComplete="new-password"
+                  suppressHydrationWarning
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  suppressHydrationWarning
                 >
                   {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -292,6 +334,7 @@ export default function RegisterPage() {
                   type="button"
                   onClick={() => setStep(1)}
                   className="secondary-button"
+                  suppressHydrationWarning
                 >
                   <ArrowLeft className="mr-2 w-4 h-4" />
                   Back
@@ -301,6 +344,7 @@ export default function RegisterPage() {
                   onClick={() => setStep(3)}
                   disabled={!canProceedToStep3}
                   className="login-button"
+                  suppressHydrationWarning
                 >
                   Next
                   <ArrowRight className="ml-2 w-4 h-4" />
@@ -323,6 +367,7 @@ export default function RegisterPage() {
                     type="button"
                     onClick={() => setRole(roleOption)}
                     className={`role-button ${role === roleOption ? 'active' : ''}`}
+                    suppressHydrationWarning
                   >
                     <div className="role-icon">
                       {getRoleIcon(roleOption)}
@@ -356,6 +401,7 @@ export default function RegisterPage() {
                       onClick={() => setShowBranchDropdown(!showBranchDropdown)}
                       className="w-full input pl-12 pr-12 text-left flex items-center justify-between"
                       disabled={loadingBranches}
+                      suppressHydrationWarning
                     >
                       <span className={selectedBranch ? "text-slate-800" : "text-slate-500"}>
                         {selectedBranch ? selectedBranch.name : (loadingBranches ? "Loading branches..." : "Select a branch")}
@@ -379,6 +425,7 @@ export default function RegisterPage() {
                                 setShowBranchDropdown(false);
                               }}
                               className="w-full px-4 py-3 text-left hover:bg-slate-50 border-b border-slate-100 last:border-b-0 transition-colors"
+                              suppressHydrationWarning
                             >
                               <div className="font-medium text-slate-800">{branch.name}</div>
                             </button>
@@ -401,15 +448,17 @@ export default function RegisterPage() {
                   type="button"
                   onClick={() => setStep(2)}
                   className="secondary-button"
+                  suppressHydrationWarning
                 >
                   <ArrowLeft className="mr-2 w-4 h-4" />
                   Back
                 </button>
-        <button
+                <button
                   type="button"
-          onClick={handleRegister}
+                  onClick={handleRegister}
                   disabled={loading || !canRegister}
                   className="login-button"
+                  suppressHydrationWarning
                 >
                   {loading ? (
                     <div className="flex items-center justify-center">
@@ -419,7 +468,7 @@ export default function RegisterPage() {
                   ) : (
                     "Create Account"
                   )}
-        </button>
+                </button>
               </div>
             </div>
           )}

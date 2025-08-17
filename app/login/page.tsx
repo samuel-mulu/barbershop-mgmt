@@ -16,25 +16,38 @@ export default function LoginPage() {
 
   const handleLogin = async () => {
     setLoading(true);
-    const res = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, password }),
-    });
-    const data = await res.json();
-    setLoading(false);
+    try {
+      // Complete login with existing branchId from database
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, password }),
+      });
+      const data = await res.json();
 
-    if (res.ok && data.token) {
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      if (data.user.branchId) {
-        localStorage.setItem("branchId", data.user.branchId);
+      if (res.ok && data.token) {
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        if (data.user.branchId) {
+          localStorage.setItem("branchId", data.user.branchId);
+        }
+        
+        // Redirect to appropriate dashboard based on user role
+        const dashboardPath = `/dashboard/${data.user.role}`;
+        console.log("🔍 Redirecting to dashboard:", dashboardPath);
+        window.location.href = dashboardPath;
+      } else {
+        alert(data.error || "Login failed");
       }
-      window.location.href = "/dashboard";
-    } else {
-      alert(data.error || "Login failed");
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("Login failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
+
+
 
   // Don't render until mounted to prevent hydration mismatch
   if (!mounted) {

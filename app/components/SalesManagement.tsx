@@ -102,6 +102,7 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
       
       if (response.ok) {
         const data = await response.json();
+        console.log('🛒 Fetched products for sales:', data.products);
         setProducts(data.products);
       }
     } catch (error) {
@@ -123,6 +124,28 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
     setLoading(true);
 
     try {
+      // Validate product sales
+      if (saleType === 'product_sale') {
+        for (const sale of productSalesForm) {
+          const product = getProductById(sale.productId);
+          if (!product) {
+            alert(`Product not found for sale ${sale.productId}`);
+            setLoading(false);
+            return;
+          }
+          if (product.pricePerUnit <= 0) {
+            alert(`Cannot sell product "${product.name}" with $0 price. Please update the product price first.`);
+            setLoading(false);
+            return;
+          }
+          if (sale.soldQuantity > product.quantity) {
+            alert(`Insufficient quantity for "${product.name}". Available: ${product.quantity}, Requested: ${sale.soldQuantity}`);
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
       // Prepare sale data
       const saleData = saleType === 'product_sale' 
         ? { type: 'product_sale' as const, productSales: productSalesForm }
@@ -153,6 +176,7 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
 
       if (saleType === 'product_sale') {
         // Use separate product sales endpoint
+        console.log('🛒 Sending product sales data:', { productSales: productSalesForm });
         response = await fetch('/api/product-sales', {
           method: 'POST',
           headers: {
@@ -193,7 +217,17 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
         }
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to record sale');
+        const errorMessage = error.error || 'Failed to record sale';
+        console.error('❌ Sale failed:', errorMessage);
+        
+        // Show more specific error messages
+        if (errorMessage.includes('Insufficient quantity')) {
+          alert(`❌ Sale Failed: ${errorMessage}\n\nPlease check product inventory and try again.`);
+        } else if (errorMessage.includes('Product not found')) {
+          alert(`❌ Sale Failed: ${errorMessage}\n\nThis product may have been deleted or moved.`);
+        } else {
+          alert(`❌ Sale Failed: ${errorMessage}`);
+        }
       }
     } catch (error) {
       console.error('Error recording sale:', error);
@@ -240,6 +274,23 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
   const updateProductSale = (index: number, field: keyof ProductSaleForm, value: string | number) => {
     const updated = [...productSalesForm];
     updated[index] = { ...updated[index], [field]: value };
+    
+    // If product is selected, validate quantity immediately
+    if (field === 'productId' && value) {
+      const product = getProductById(value as string);
+      if (product && product.quantity <= 0) {
+        alert(`⚠️ Warning: "${product.name}" is out of stock (${product.quantity} available). Please add inventory first.`);
+      }
+    }
+    
+    // If quantity is being updated, validate against available stock
+    if (field === 'soldQuantity' && updated[index].productId) {
+      const product = getProductById(updated[index].productId);
+      if (product && (value as number) > product.quantity) {
+        alert(`⚠️ Warning: Requested quantity (${value}) exceeds available stock (${product.quantity}) for "${product.name}".`);
+      }
+    }
+    
     setProductSalesForm(updated);
   };
 
@@ -250,6 +301,10 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
   const calculateTotalSaleAmount = () => {
     return productSalesForm.reduce((total, sale) => {
       const product = getProductById(sale.productId);
+      console.log('🛒 Calculating total for sale:', sale, 'Product:', product);
+      if (product && product.pricePerUnit === 0) {
+        console.warn('⚠️ Product has $0 price:', product);
+      }
       return total + (product ? sale.soldQuantity * product.pricePerUnit : 0);
     }, 0);
   };
@@ -410,8 +465,14 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
                           >
                             <option value="">Select Product</option>
                             {products.map((product) => (
-                              <option key={product._id} value={product._id}>
-                                {product.name} ({product.quantity} {product.quantityType}s)
+                              <option 
+                                key={product._id} 
+                                value={product._id}
+                                disabled={product.quantity <= 0}
+                                className={product.quantity <= 0 ? 'text-gray-400' : ''}
+                              >
+                                {product.name} - ${product.pricePerUnit} ({product.quantity} {product.quantityType}s)
+                                {product.quantity <= 0 ? ' - OUT OF STOCK' : ''}
                               </option>
                             ))}
                           </select>
@@ -423,6 +484,7 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
                             value={sale.soldQuantity}
                             onChange={(e) => updateProductSale(index, 'soldQuantity', parseInt(e.target.value) || 0)}
                             className="w-full px-4 py-3 text-sm border border-purple-200 rounded-xl focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 transition-all duration-300 bg-white"
+                            placeholder="e.g., 1, 5, 10"
                             min="1"
                             required
                           />
@@ -430,21 +492,75 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
                       </div>
 
                       {sale.productId && (
-                        <div className="mt-4 p-4 bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 rounded-xl border border-emerald-200 shadow-sm">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-semibold text-emerald-700">Item Total:</span>
-                            <span className="text-xl font-bold text-emerald-600">
+                        <>
+                          {/* Out of Stock Warning */}
                           {(() => {
                             const product = getProductById(sale.productId);
-                            if (product) {
-                              const total = sale.soldQuantity * product.pricePerUnit;
-                                  return formatCurrency(total);
+                            if (product && product.quantity <= 0) {
+                              return (
+                                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-red-600 font-bold">🚫</span>
+                                    <span className="text-sm text-red-700 font-semibold">
+                                      OUT OF STOCK: "{product.name}" has {product.quantity} quantity available.
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-red-600 mt-1">
+                                    Please add inventory before selling this product.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      // Scroll to product management section
+                                      const productSection = document.querySelector('[data-section="addProduct"]');
+                                      if (productSection) {
+                                        productSection.scrollIntoView({ behavior: 'smooth' });
+                                      }
+                                    }}
+                                    className="mt-2 px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors"
+                                  >
+                                    📦 Manage Inventory
+                                  </button>
+                                </div>
+                              );
                             }
-                            return '';
+                            return null;
                           })()}
-                            </span>
+                          
+                          <div className="mt-4 p-4 bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 rounded-xl border border-emerald-200 shadow-sm">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-semibold text-emerald-700">Item Total:</span>
+                              <span className="text-xl font-bold text-emerald-600">
+                            {(() => {
+                              const product = getProductById(sale.productId);
+                              if (product) {
+                                const total = sale.soldQuantity * product.pricePerUnit;
+                                    return formatCurrency(total);
+                              }
+                              return '';
+                            })()}
+                              </span>
+                            </div>
                           </div>
-                        </div>
+                          
+                          {/* Warning for $0 price products */}
+                          {(() => {
+                            const product = getProductById(sale.productId);
+                            if (product && product.pricePerUnit <= 0) {
+                              return (
+                                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-xl">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-red-600 font-bold">⚠️</span>
+                                    <span className="text-sm text-red-700 font-semibold">
+                                      This product has a price of $0. Please update the product price before selling.
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </>
                       )}
                     </div>
                   ))}
@@ -490,7 +606,7 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
                   value={withdrawalReason}
                   onChange={(e) => setWithdrawalReason(e.target.value)}
                       className="w-full px-4 py-3 border border-amber-200 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 text-sm transition-all duration-300 bg-white"
-                      placeholder="Enter the reason for this withdrawal..."
+                      placeholder="e.g., Cash withdrawal for supplies, Emergency expenses, Daily cash out"
                   rows={3}
                   required
                 />
@@ -509,7 +625,7 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
                         className="w-full pl-8 pr-4 py-3 border border-amber-200 rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 text-sm transition-all duration-300 bg-white"
                   min="0"
                   step="0.01"
-                        placeholder="0.00"
+                        placeholder="e.g., 50.00, 100.50, 25.75"
                   required
                 />
                     </div>

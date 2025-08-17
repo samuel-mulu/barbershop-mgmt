@@ -19,6 +19,7 @@ interface AdminServiceOperation {
   workerName: string;
   workerRole: 'barber' | 'washer';
   workerId: mongoose.Types.ObjectId;
+  by: 'cash' | 'mobile banking(telebirr)';
 }
 
 interface Product {
@@ -77,7 +78,8 @@ const adminServiceOperationSchema = new mongoose.Schema({
   finishedDate: { type: Date }, // When operation was marked as finished
   workerName: { type: String, required: true },
   workerRole: { type: String, enum: ['barber', 'washer'], required: true },
-  workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
+  workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  by: { type: String, enum: ['cash', 'mobile banking(telebirr)'], default: 'cash' }
 }, { _id: false });
 
 // Product schema as subcollection

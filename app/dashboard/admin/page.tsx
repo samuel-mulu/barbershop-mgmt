@@ -2,6 +2,7 @@
 import Link from "next/link";
 import useSWR from "swr";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { getUserFromLocalStorage } from "@/utils/auth";
 import EthiopianDate from "@/components/EthiopianDate";
 import Modal from "@/components/ui/modal";
@@ -20,12 +21,21 @@ import {
   ShoppingCart,
   Menu,
   X,
-  WifiOff
+  WifiOff,
+  Edit,
+  Trash2,
+  Hash,
+  User,
+  Building,
+  CreditCard,
+  Scissors,
+  AlertTriangle
 } from "lucide-react";
-import ProductManagement from "@/components/ProductManagement";
-import SalesManagement from "@/components/SalesManagement";
+import EnhancedProductManagement from "@/components/EnhancedProductManagement";
+import EnhancedSalesManagement from "@/components/EnhancedSalesManagement";
 import OfflineProvider, { useOfflineQueue } from "../../../providers/OfflineProvider";
 import OfflineBanner, { OfflineIndicator } from "../../../components/OfflineBanner";
+
 
 const fetcher = (url: string) => {
   const token = localStorage.getItem("token");
@@ -34,6 +44,8 @@ const fetcher = (url: string) => {
   
   if (!token) {
     console.error("❌ No token found in localStorage");
+    // Redirect to login instead of throwing error
+    window.location.href = "/login";
     throw new Error("No authentication token found");
   }
   
@@ -46,6 +58,13 @@ const fetcher = (url: string) => {
     console.log("🔍 Response status:", res.status, "for URL:", url);
     if (!res.ok) {
       console.error("❌ API request failed:", res.status, res.statusText);
+      if (res.status === 401) {
+        // Token expired or invalid, redirect to login
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        localStorage.removeItem("branchId");
+        window.location.href = "/login";
+      }
       throw new Error(`API request failed: ${res.status}`);
     }
     return res.json();
@@ -87,11 +106,12 @@ interface ServiceOperation {
   _id?: string;
   name: string;
   price: number;
-  status: string;
-  createdAt: string;
+  status?: string;
+  createdAt?: string;
   workerName: string;
-  workerRole: string;
-  workerId: string;
+  workerRole: "barber" | "washer";
+  workerId?: string;
+  by: "cash" | "mobile banking(telebirr)";
   otherWorker?: {
     id: string;
     role: string;
@@ -115,19 +135,54 @@ interface AdminServiceOperation {
   workerRole: "barber" | "washer";
   workerId: string;
   status: string;
+  by: "cash" | "mobile banking(telebirr)";
 }
+
+// EditOperationForm component is now imported from @/components/EditOperationForm
 
 // Internal component that has access to offline context
 function AdminDashboardContent() {
   const [user, setUser] = useState<{ _id: string; name: string; role: string; branchId: string } | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  
+  // Check authentication on component mount
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    const userData = localStorage.getItem("user");
+    
+    if (!token || !userData) {
+      console.log("❌ No authentication data found, redirecting to login");
+      window.location.href = "/login";
+      return;
+    }
+    
+    try {
+      const parsedUser = JSON.parse(userData);
+      if (parsedUser.role !== "admin") {
+        console.log("❌ User is not admin, redirecting to appropriate dashboard");
+        window.location.href = `/dashboard/${parsedUser.role}`;
+        return;
+      }
+      setUser(parsedUser);
+    } catch (error) {
+      console.error("❌ Error parsing user data:", error);
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      localStorage.removeItem("branchId");
+      window.location.href = "/login";
+    } finally {
+      setAuthChecking(false);
+    }
+  }, []);
   const [branchId, setBranchId] = useState<string | null>(null);
   const [branchName, setBranchName] = useState<string>("");
   const [selectedServices, setSelectedServices] = useState<SelectedService[]>([]);
   const [selectedServiceId, setSelectedServiceId] = useState<string>("");
   const [selectedBarberId, setSelectedBarberId] = useState<string>("");
   const [selectedWasherId, setSelectedWasherId] = useState<string>("");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "mobile banking(telebirr)">("cash");
   const [saving, setSaving] = useState<boolean>(false);
-  const [showHistory] = useState<boolean>(false);
+  const [showHistory, setShowHistory] = useState<boolean>(true);
   
   // Toggle states for Add Product and Record Sale
   const [activeSection, setActiveSection] = useState<'none' | 'addProduct' | 'recordSale' | 'history'>('none');
@@ -150,17 +205,33 @@ function AdminDashboardContent() {
     type: "info"
   });
 
+  // Edit mode states for reusing main form
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [editingOperationId, setEditingOperationId] = useState<string>('');
+  const [editingOperation, setEditingOperation] = useState<ServiceOperation | null>(null);
+
+  // Delete confirmation modal state
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    operation: ServiceOperation | null;
+  }>({
+    isOpen: false,
+    operation: null
+  });
+
+  // Loading states
+  const [updating, setUpdating] = useState<boolean>(false);
+  const [deleting, setDeleting] = useState<boolean>(false);
+
   // Get offline queue functionality - MUST be called before any conditional returns
   const { isOffline, queueService } = useOfflineQueue();
 
-  // Get user data and branchId on component mount
+  // Get branchId from user data
   useEffect(() => {
-    const userData = getUserFromLocalStorage();
-    if (userData) {
-      setUser(userData);
-      setBranchId(userData.branchId);
+    if (user) {
+      setBranchId(user.branchId);
     }
-  }, []);
+  }, [user]);
 
   // Fetch services, barbers, washers, and service operations
   const { data: services = [] } = useSWR<Service[]>(
@@ -215,41 +286,113 @@ function AdminDashboardContent() {
     showHistory ? `/api/admin/service-operations` : null,
     fetcher
   );
+  
+  console.log("🔍 showHistory state:", showHistory);
+  console.log("🔍 SWR URL:", showHistory ? `/api/admin/service-operations` : null);
+  console.log("🔍 loadingHistory:", loadingHistory);
+  console.log("🔍 historyError:", historyError);
 
   // Ensure serviceOperations is always an array and filter to only pending operations
   const safeServiceOperationsHistory = Array.isArray(serviceOperationsHistory) ? serviceOperationsHistory.filter(op => op.status === "pending") : [];
+  
+  console.log("🔍 Service operations history:", serviceOperationsHistory);
+  console.log("🔍 Safe service operations history:", safeServiceOperationsHistory);
   
   // Filter workers by role
   // const barbersHistory = barbersList.filter((worker: Barber) => worker.role === "barber");
   // const washersHistory = washersList.filter((worker: Washer) => worker.role === "washer");
 
+  // Add service function
   const handleAddService = () => {
-    if (!selectedServiceId || (!selectedBarberId && !selectedWasherId)) return;
+    if (isEditMode) {
+      // Handle edit operation
+      const selectedService = services.find(s => s.name === selectedServiceId);
+      if (!selectedService) {
+        console.error("❌ Selected service not found");
+        return;
+      }
 
-    const service = getSelectedService();
-    if (!service) return;
+      // Determine worker and role
+      let workerId = '';
+      let workerName = '';
+      let workerRole: 'barber' | 'washer' = 'barber';
+      let price = 0;
 
-    const newService: SelectedService = {
-      serviceId: selectedServiceId,
-      serviceName: selectedServiceId,
-      barberId: selectedBarberId || "",
-      barberName: selectedBarberId ? barbersList.find(b => b._id === selectedBarberId)?.name || "" : "",
-      washerId: selectedWasherId,
-      washerName: selectedWasherId ? washersList.find(w => w._id === selectedWasherId)?.name || "" : "",
-    };
+      if (selectedBarberId) {
+        const barber = barbersList.find(b => b._id === selectedBarberId);
+        if (barber) {
+          workerId = barber._id;
+          workerName = barber.name;
+          workerRole = 'barber';
+          price = selectedService.barberPrice || 0;
+        }
+      } else if (selectedWasherId) {
+        const washer = washersList.find(w => w._id === selectedWasherId);
+        if (washer) {
+          workerId = washer._id;
+          workerName = washer.name;
+          workerRole = 'washer';
+          price = selectedService.washerPrice || 0;
+        }
+      }
 
-    if (service.barberPrice && selectedBarberId) {
-      newService.barberPrice = service.barberPrice;
+      if (!workerId || !workerName) {
+        console.error("❌ No worker selected");
+        return;
+      }
+
+      const updatedData = {
+        name: selectedServiceId,
+        price: price,
+        workerName: workerName,
+        workerRole: workerRole,
+        workerId: workerId,
+        by: paymentMethod
+      };
+
+      handleUpdateOperation(updatedData);
+    } else {
+      // Handle add operation (existing logic)
+      const selectedService = services.find(s => s.name === selectedServiceId);
+      if (!selectedService) {
+        console.error("❌ Selected service not found");
+        return;
+      }
+
+      // Check if service is already selected
+      const isAlreadySelected = selectedServices.some(
+        service => service.serviceName === selectedServiceId
+      );
+
+      if (isAlreadySelected) {
+        setModal({
+          isOpen: true,
+          title: "Warning",
+          message: "This service is already selected!",
+          type: "info"
+        });
+        return;
+      }
+
+      // Create service object
+      const newService: SelectedService = {
+        serviceId: selectedServiceId,
+        serviceName: selectedServiceId,
+        barberPrice: selectedService.barberPrice,
+        washerPrice: selectedService.washerPrice,
+        barberId: selectedBarberId || '',
+        barberName: selectedBarberId ? barbersList.find(b => b._id === selectedBarberId)?.name || '' : '',
+        washerId: selectedWasherId || '',
+        washerName: selectedWasherId ? washersList.find(w => w._id === selectedWasherId)?.name || '' : ''
+      };
+
+      setSelectedServices(prev => [...prev, newService]);
+
+      // Reset form
+      setSelectedServiceId('');
+      setSelectedBarberId('');
+      setSelectedWasherId('');
     }
-
-    if (service.washerPrice && selectedWasherId) {
-      newService.washerPrice = service.washerPrice;
-    }
-
-    setSelectedServices([...selectedServices, newService]);
-    setSelectedServiceId("");
-    setSelectedBarberId("");
-    setSelectedWasherId("");
   };
 
   // const handleRemoveService = (index: number) => {
@@ -280,6 +423,15 @@ function AdminDashboardContent() {
     if (service.barberPrice && !selectedBarberId) return true;
     if (service.washerPrice && !selectedWasherId) return true;
     if (!selectedBarberId && !selectedWasherId) return true;
+
+    // In edit mode, we don't need to check for duplicate services
+    if (!isEditMode) {
+      // Check if service is already selected (only for add mode)
+      const isAlreadySelected = selectedServices.some(
+        service => service.serviceName === selectedServiceId
+      );
+      if (isAlreadySelected) return true;
+    }
 
     return false;
   };
@@ -372,7 +524,8 @@ function AdminDashboardContent() {
             workerName: service.barberName,
             workerRole: "barber",
             workerId: service.barberId,
-            status: "pending"
+            status: "pending",
+            by: paymentMethod
           });
         }
       });
@@ -385,7 +538,8 @@ function AdminDashboardContent() {
             workerName: service.washerName,
             workerRole: "washer",
             workerId: service.washerId,
-            status: "pending"
+            status: "pending",
+            by: paymentMethod
           });
         }
       });
@@ -401,6 +555,9 @@ function AdminDashboardContent() {
         body: JSON.stringify({ serviceOperations: workerServiceOperations }),
       });
 
+      console.log("🔍 Sending admin service operations to API:", adminServiceOperations);
+      console.log("🔍 Payment method being sent:", paymentMethod);
+      
       const adminResponse = await fetch("/api/admin/service-operations", {
         method: "POST",
         headers: { 
@@ -475,14 +632,222 @@ function AdminDashboardContent() {
     setModal(prev => ({ ...prev, isOpen: false }));
   };
 
-  // Show loading if user data is not loaded yet
-  if (!user || !branchId) {
+  // Edit operation function
+  const handleEditOperation = (operation: ServiceOperation) => {
+    console.log("🔍 handleEditOperation called with:", operation);
+    console.log("🔍 Operation ID:", operation._id);
+    
+    // Set edit mode and populate form
+    setIsEditMode(true);
+    setEditingOperationId(operation._id || `temp_${Date.now()}`);
+    setEditingOperation(operation);
+    
+    // Populate the main form with operation data
+    setSelectedServiceId(operation.name || '');
+    setPaymentMethod(operation.by || 'cash');
+    
+    // Set worker based on role
+    if (operation.workerRole === 'barber') {
+      setSelectedBarberId(operation.workerId || '');
+      setSelectedWasherId('');
+    } else if (operation.workerRole === 'washer') {
+      setSelectedWasherId(operation.workerId || '');
+      setSelectedBarberId('');
+    }
+    
+    // Clear selected services since we're editing a single operation
+    setSelectedServices([]);
+    
+    console.log("🔍 Edit mode activated for operation:", operation);
+  };
+
+  // Cancel edit function
+  const cancelEdit = () => {
+    setIsEditMode(false);
+    setEditingOperationId('');
+    setEditingOperation(null);
+    setSelectedServiceId('');
+    setSelectedBarberId('');
+    setSelectedWasherId('');
+    setPaymentMethod('cash');
+    setSelectedServices([]);
+    console.log("🔍 Edit mode cancelled");
+  };
+
+  // Delete operation function
+  const handleDeleteOperation = (operation: ServiceOperation) => {
+    console.log("🔍 handleDeleteOperation called with:", operation);
+    
+    // Create a proper operation object with all required fields
+    const operationToDelete = {
+      ...operation,
+      _id: operation._id || `temp_${Date.now()}`,
+      name: operation.name || '',
+      price: operation.price || 0,
+      workerName: operation.workerName || '',
+      workerRole: operation.workerRole || 'barber',
+      by: operation.by || 'cash'
+    };
+    
+    setDeleteModal({
+      isOpen: true,
+      operation: operationToDelete
+    });
+    console.log("🔍 Delete modal state set to open with operation:", operationToDelete);
+  };
+
+  // Update operation function
+  const handleUpdateOperation = async (updatedData: any) => {
+    if (!editingOperation) {
+      console.error("❌ No operation to update");
+      return;
+    }
+    
+    console.log("🔍 handleUpdateOperation called with:", updatedData);
+    console.log("🔍 Original operation to update:", editingOperation);
+    
+    setUpdating(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No authentication token found");
+      }
+
+      // Use the stored editing operation as the original operation
+      const originalOperation = editingOperation;
+      console.log("🔍 Using stored original operation:", originalOperation);
+
+      console.log("🔍 Using operation ID for update:", editingOperationId);
+      console.log("🔍 Original operation for reference:", originalOperation);
+      
+      const response = await fetch(`/api/admin/service-operations/${editingOperationId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...updatedData,
+          originalOperation: originalOperation
+        })
+      });
+
+      const responseData = await response.json();
+      console.log("🔍 Update response:", response.status, responseData);
+
+      if (response.ok) {
+        setModal({
+          isOpen: true,
+          title: "Success",
+          message: "Service operation updated successfully!",
+          type: "success"
+        });
+        
+        // Exit edit mode and reset form
+        cancelEdit();
+        
+        // Refresh the data by refetching
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      } else {
+        throw new Error(responseData.error || "Failed to update operation");
+      }
+    } catch (error) {
+      console.error("❌ Error updating operation:", error);
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: error instanceof Error ? error.message : "Failed to update operation. Please try again.",
+        type: "error"
+      });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Delete operation function
+  const handleConfirmDelete = async () => {
+    if (!deleteModal.operation) {
+      console.error("❌ No operation to delete");
+      return;
+    }
+    
+    console.log("🔍 handleConfirmDelete called for operation:", deleteModal.operation);
+    
+    setDeleting(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("No authentication token found");
+      }
+
+      // Since the operations don't have proper _id fields, we need to use a different approach
+      const operationId = deleteModal.operation._id || `operation_${Date.now()}`;
+      
+      console.log("🔍 Using operation ID for delete:", operationId);
+      console.log("🔍 Original operation for reference:", deleteModal.operation);
+      
+      const response = await fetch(`/api/admin/service-operations/${operationId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          originalOperation: deleteModal.operation // Pass original operation for reference
+        })
+      });
+
+      const responseData = await response.json();
+      console.log("🔍 Delete response:", response.status, responseData);
+
+      if (response.ok) {
+        setModal({
+          isOpen: true,
+          title: "Success",
+          message: "Service operation deleted successfully!",
+          type: "success"
+        });
+        setDeleteModal({ isOpen: false, operation: null });
+        
+        // Refresh the data by refetching
+        setTimeout(() => {
+        window.location.reload();
+        }, 1500);
+      } else {
+        throw new Error(responseData.error || "Failed to delete operation");
+      }
+    } catch (error) {
+      console.error("❌ Error deleting operation:", error);
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: error instanceof Error ? error.message : "Failed to delete operation. Please try again.",
+        type: "error"
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+
+
+  // Close delete modal
+  const closeDeleteModal = () => {
+    setDeleteModal({ isOpen: false, operation: null });
+  };
+
+  // Show loading if user data is not loaded yet or auth is being checked
+  if (authChecking || !user || !branchId) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="container">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <p className="text-slate-600">Loading admin dashboard...</p>
+            <p className="text-slate-600">
+              {authChecking ? "Checking authentication..." : "Loading admin dashboard..."}
+            </p>
           </div>
         </div>
       </div>
@@ -494,7 +859,92 @@ function AdminDashboardContent() {
   console.log('🔧 [DEBUG] Admin Dashboard - BranchId:', branchId);
   console.log('🔧 [DEBUG] Offline Status:', isOffline);
 
+  console.log('🔧 [DEBUG] Delete Modal State:', deleteModal);
+
   return (
+    <>
+
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal.isOpen && deleteModal.operation && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[99999] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border-0 w-full max-w-lg animate-slideIn" style={{ backgroundColor: '#ffffff' }}>
+            {/* Modal Header */}
+            <div className="px-8 py-6 border-b border-gray-100 bg-white rounded-t-2xl" style={{ backgroundColor: '#ffffff' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Confirm Deletion</h3>
+                  <p className="text-sm text-gray-600 mt-1">Are you sure you want to delete this service operation?</p>
+                </div>
+                <button
+                  onClick={closeDeleteModal}
+                  className="w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors bg-white rounded-full border border-gray-200 flex items-center justify-center text-lg font-bold"
+                  style={{ backgroundColor: '#ffffff' }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            
+            {/* Modal Content */}
+            <div className="px-8 py-6 bg-white rounded-b-2xl" style={{ backgroundColor: '#ffffff' }}>
+              {/* Operation Details */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Scissors className="w-4 h-4 text-gray-600" />
+                    <span className="font-medium text-gray-700">Service:</span>
+                    <span className="text-gray-900">{deleteModal.operation.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-gray-600" />
+                    <span className="font-medium text-gray-700">Worker:</span>
+                    <span className="text-gray-900">{deleteModal.operation.workerName}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <DollarSign className="w-4 h-4 text-gray-600" />
+                    <span className="font-medium text-gray-700">Price:</span>
+                    <span className="text-gray-900">{deleteModal.operation.price}ብር</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-gray-600" />
+                    <span className="font-medium text-gray-700">Payment:</span>
+                    <span className="text-gray-900">{deleteModal.operation.by}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={closeDeleteModal}
+                  className="submit-button"
+                  style={{ background: '#e2e8f0', color: '#475569' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  disabled={deleting}
+                  className="submit-button"
+                  style={{ background: '#ef4444', color: 'white' }}
+                >
+                  {deleting ? (
+                    <div className="button-content">
+                      <div className="loading-spinner"></div>
+                      Deleting...
+                    </div>
+                  ) : (
+                    'Delete Operation'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Application Content */}
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
       <OfflineBanner 
         position="top"
@@ -502,6 +952,7 @@ function AdminDashboardContent() {
         showSyncStatus={true}
         dismissible={false}
       />
+        
       <div className="flex">
         {/* Sidebar */}
         <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
@@ -581,7 +1032,7 @@ function AdminDashboardContent() {
 
         {/* Add Product Section */}
         {activeSection === 'addProduct' && (
-          <div className="container mb-6">
+          <div className="container mb-6" data-section="addProduct">
             <h2 className="section-title">Add Product</h2>
             
             {/* Summary Cards */}
@@ -606,7 +1057,7 @@ function AdminDashboardContent() {
               </div>
             </div>
 
-            <ProductManagement 
+            <EnhancedProductManagement 
               onSuccess={() => {
                 setModal({
                   isOpen: true,
@@ -649,18 +1100,10 @@ function AdminDashboardContent() {
                   <p className="summary-value-small text-orange-600">{salesSummary.withdrawals}</p>
                 </div>
               </div>
-              <div className="summary-card-small">
-                <div className="summary-icon-small bg-blue-300">
-                  <TrendingUp className="w-4 h-4 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="summary-label-small">Total Revenue</h3>
-                  <p className="summary-value-small text-blue-600">${salesSummary.totalRevenue.toFixed(2)}</p>
-                </div>
-              </div>
+
             </div>
 
-            <SalesManagement 
+            <EnhancedSalesManagement 
               onSuccess={() => {
                 setModal({
                   isOpen: true,
@@ -682,7 +1125,21 @@ function AdminDashboardContent() {
         {/* History Section */}
         {activeSection === 'history' && (
           <div className="container mb-6">
-            <h2 className="section-title">Service Operations History</h2>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="section-title">Service Operations History</h2>
+              <button
+                onClick={() => window.location.reload()}
+                className="action-button"
+                disabled={loadingHistory}
+              >
+                {loadingHistory ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                ) : (
+                  <TrendingUp className="w-4 h-4 mr-2" />
+                )}
+                Refresh
+              </button>
+            </div>
             
             {/* Summary Cards */}
             <div className="summary-cards-grid">
@@ -691,7 +1148,7 @@ function AdminDashboardContent() {
                   <TrendingUp className="w-4 h-4 text-blue-600" />
                 </div>
                 <div>
-                  <h3 className="summary-label-small">ዘተሰረሐ ስራሕ</h3>
+                  <h3 className="summary-label-small">Pending Operations</h3>
                   <p className="summary-value-small text-blue-600">{safeServiceOperationsHistory.length}</p>
                 </div>
               </div>
@@ -717,6 +1174,9 @@ function AdminDashboardContent() {
               <div className="error-state">
                 <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-2" />
                 <p className="text-red-500">Error loading history</p>
+                <p className="text-red-400 text-sm mt-2">
+                  {historyError.message || 'Unknown error occurred'}
+                </p>
                 <button 
                   onClick={() => window.location.reload()} 
                   className="retry-button"
@@ -727,7 +1187,10 @@ function AdminDashboardContent() {
             ) : safeServiceOperationsHistory.length === 0 ? (
               <div className="empty-state">
                 <Clock className="w-12 h-12 text-slate-400 mx-auto mb-2" />
-                <p className="text-slate-500">No service operations found</p>
+                <p className="text-slate-500">No pending service operations found</p>
+                <p className="text-slate-400 text-sm mt-2">
+                  All operations may have been completed or there are no operations yet.
+                </p>
               </div>
             ) : (
               <div className="table-container">
@@ -738,7 +1201,9 @@ function AdminDashboardContent() {
                       <th>Price</th>
                       <th>Worker</th>
                       <th>Role</th>
+                      <th>Payment</th>
                       <th>Date</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -756,12 +1221,41 @@ function AdminDashboardContent() {
                             {operation.workerRole === 'barber' ? 'ቀምቃሚ' : operation.workerRole === 'washer' ? 'ሓጻቢት' : operation.workerRole || 'N/A'}
                           </span>
                         </td>
+                        <td>
+                          <span className={`payment-badge ${operation.by === 'cash' ? 'cash' : operation.by === 'mobile banking(telebirr)' ? 'mobile' : 'cash'}`}>
+                            {operation.by === 'cash' ? '💵 Cash' : operation.by === 'mobile banking(telebirr)' ? '📱 Mobile Banking' : '💵 Cash'}
+                          </span>
+                        </td>
                         <td className="text-xs text-slate-500">
                           {operation.createdAt ? (
                             <EthiopianDate dateString={operation.createdAt} showTime={true} showWeekday={false} />
                           ) : (
                             'N/A'
                           )}
+                        </td>
+                        <td>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                console.log("🔍 Edit button clicked for operation:", operation);
+                                handleEditOperation(operation);
+                              }}
+                              className="action-icon-button edit"
+                              title="Edit"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => {
+                                console.log("🔍 Delete button clicked for operation:", operation);
+                                handleDeleteOperation(operation);
+                              }}
+                              className="action-icon-button delete"
+                              title="Delete"
+                            >
+                              🗑️
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -772,11 +1266,19 @@ function AdminDashboardContent() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className={`grid grid-cols-1 ${isEditMode ? 'lg:grid-cols-1' : 'lg:grid-cols-3'} gap-6`}>
           {/* Main Content */}
-          <div className="lg:col-span-2">
+          <div className={isEditMode ? 'lg:col-span-1' : 'lg:col-span-2'}>
             <div className="container">
-              <h2 className="section-title">Manage Services</h2>
+              <h2 className="section-title">
+                {isEditMode ? 'Edit Service Operation' : 'Manage Services'}
+              </h2>
+              
+              {isEditMode && (
+                <p className="text-sm text-gray-600 mb-4">
+                  Update the service operation details below
+                </p>
+              )}
               
               {/* Service Selection */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -844,15 +1346,64 @@ function AdminDashboardContent() {
                 )}
               </div>
 
-              {/* Add Service Button */}
-              <button
-                onClick={handleAddService}
-                disabled={isAddButtonDisabled()}
-                className="add-button"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Service
-              </button>
+              {/* Payment Method Selection */}
+              <div className="form-group mt-6">
+                <label className="form-label">Payment Method</label>
+                <div className="flex gap-4">
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="cash"
+                      checked={paymentMethod === "cash"}
+                      onChange={(e) => setPaymentMethod(e.target.value as "cash" | "mobile banking(telebirr)")}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">💵 Cash</span>
+                  </label>
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="mobile banking(telebirr)"
+                      checked={paymentMethod === "mobile banking(telebirr)"}
+                      onChange={(e) => setPaymentMethod(e.target.value as "cash" | "mobile banking(telebirr)")}
+                      className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
+                    />
+                    <span className="text-sm font-medium text-gray-700">📱 Mobile Banking (Telebirr)</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 mt-6">
+                {isEditMode && (
+                  <button
+                    onClick={cancelEdit}
+                    disabled={updating}
+                    className="w-full px-4 py-3 text-gray-700 bg-gray-50 border-2 border-gray-200 rounded-xl hover:bg-gray-100 hover:border-gray-300 transition-all duration-200 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ❌ Cancel Edit
+                  </button>
+                )}
+                <button
+                  onClick={handleAddService}
+                  disabled={isAddButtonDisabled() || updating}
+                  className="add-button"
+                >
+                  {updating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Updating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" />
+                      {isEditMode ? 'Update Service' : 'Add Service'}
+                    </>
+                  )}
+                </button>
+              </div>
 
 
             </div>
@@ -860,112 +1411,129 @@ function AdminDashboardContent() {
 
           {/* Sidebar */}
           <div className="lg:col-span-1">
-            <div className="container sticky top-4">
-              <h3 className="section-title">Summary</h3>
-              
-              {selectedServices.length === 0 ? (
-                <div className="empty-state">
-                  <Users className="w-12 h-12 text-slate-400 mx-auto mb-2" />
-                  <p className="text-slate-500">No services selected</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {selectedServices.map((service, index) => (
-                    <div key={index} className="service-card">
-                      <div className="font-medium text-sm">{service.serviceName}</div>
-                      <div className="text-xs text-slate-600">
-                        {(() => {
-                          let totalPrice = 0;
-                          const priceBreakdown = [];
-                          
-                          if (service.barberPrice) {
-                            totalPrice += service.barberPrice;
-                            priceBreakdown.push(`Barber: $${service.barberPrice}`);
-                          }
-                          
-                          if (service.washerPrice) {
-                            totalPrice += service.washerPrice;
-                            priceBreakdown.push(`Washer: $${service.washerPrice}`);
-                          }
-                          
-                          return totalPrice > 0 ? 
-                            `$${totalPrice} (${priceBreakdown.join(', ')})` : 
-                            'No price set';
-                        })()}
-                      </div>
-                      <div className="text-xs text-slate-600">
-                        Barber: {service.barberName}
-                      </div>
-                      {service.washerName && (
-                        <div className="text-xs text-slate-600">
-                          Washer: {service.washerName}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  
-                  <div className="pt-4 border-t border-slate-200">
-                    <div className="flex justify-between text-sm font-medium mb-3">
-                      <span>Total:</span>
-                      <span className="price-tag">
-                        ${selectedServices.reduce((sum, service) => {
-                          let servicePrice = 0;
-                          if (service.barberPrice) {
-                            servicePrice += service.barberPrice;
-                          }
-                          if (service.washerPrice) {
-                            servicePrice += service.washerPrice;
-                          }
-                          return sum + servicePrice;
-                        }, 0)}
-                      </span>
-                    </div>
-                    
-                    <button
-                      onClick={handleFinish}
-                      disabled={saving || selectedServices.length === 0}
-                      className={`finish-button ${isOffline ? 'offline' : ''}`}
-                    >
-                      {saving ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                          {isOffline ? 'Saving Offline...' : 'Saving...'}
-                        </>
-                      ) : (
-                        <>
-                          {isOffline ? (
-                            <>
-                              <WifiOff className="w-4 h-4 mr-2" />
-                              Save Offline
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle className="w-4 h-4 mr-2" />
-                              Finish
-                            </>
-                          )}
-                        </>
-                      )}
-                    </button>
-                    
-                    {/* Offline status message */}
-                    {isOffline && selectedServices.length > 0 && (
-                      <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                        <div className="flex items-center space-x-2">
-                          <WifiOff className="w-4 h-4 text-amber-600" />
-                          <p className="text-sm text-amber-700 font-medium">
-                            You are offline. Services will be saved locally and synced when connection is restored.
-                          </p>
-                        </div>
-                      </div>
-                    )}
+            {!isEditMode && (
+              <div className="container sticky top-4">
+                <h3 className="section-title">Summary</h3>
+                
+                {selectedServices.length === 0 ? (
+                  <div className="empty-state">
+                    <Users className="w-12 h-12 text-slate-400 mx-auto mb-2" />
+                    <p className="text-slate-500">No services selected</p>
                   </div>
-                </div>
-              )}
-            </div>
+                ) : (
+                  <div className="space-y-3">
+                    {selectedServices.map((service, index) => (
+                      <div key={index} className="service-card">
+                        <div className="font-medium text-sm">{service.serviceName}</div>
+                        <div className="text-xs text-slate-600">
+                          {(() => {
+                            let totalPrice = 0;
+                            const priceBreakdown = [];
+                            
+                            if (service.barberPrice) {
+                              totalPrice += service.barberPrice;
+                              priceBreakdown.push(`Barber: $${service.barberPrice}`);
+                            }
+                            
+                            if (service.washerPrice) {
+                              totalPrice += service.washerPrice;
+                              priceBreakdown.push(`Washer: $${service.washerPrice}`);
+                            }
+                            
+                            return totalPrice > 0 ? 
+                              `$${totalPrice} (${priceBreakdown.join(', ')})` : 
+                              'No price set';
+                          })()}
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          Barber: {service.barberName}
+                        </div>
+                        {service.washerName && (
+                          <div className="text-xs text-slate-600">
+                            Washer: {service.washerName}
+                          </div>
+                        )}
+                        <div className="text-xs text-slate-600">
+                          Payment: {paymentMethod === "cash" ? "💵 Cash" : "📱 Mobile Banking (Telebirr)"}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    <div className="pt-4 border-t border-slate-200">
+                      <div className="flex justify-between text-sm font-medium mb-3">
+                        <span>Total:</span>
+                        <span className="price-tag">
+                          ${selectedServices.reduce((sum, service) => {
+                            let servicePrice = 0;
+                            if (service.barberPrice) {
+                              servicePrice += service.barberPrice;
+                            }
+                            if (service.washerPrice) {
+                              servicePrice += service.washerPrice;
+                            }
+                            return sum + servicePrice;
+                          }, 0)}
+                        </span>
+                      </div>
+                      
+                      <button
+                        onClick={handleFinish}
+                        disabled={saving || selectedServices.length === 0}
+                        className={`finish-button ${isOffline ? 'offline' : ''}`}
+                      >
+                        {saving ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            {isOffline ? 'Saving Offline...' : 'Saving...'}
+                          </>
+                        ) : (
+                          <>
+                            {isOffline ? (
+                              <>
+                                <WifiOff className="w-4 h-4 mr-2" />
+                                Save Offline
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle className="w-4 h-4 mr-2" />
+                                Finish
+                              </>
+                            )}
+                          </>
+                        )}
+                      </button>
+                      
+                      {/* Offline status message */}
+                      {isOffline && selectedServices.length > 0 && (
+                        <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                          <div className="flex items-center space-x-2">
+                            <WifiOff className="w-4 h-4 text-amber-600" />
+                            <p className="text-sm text-amber-700 font-medium">
+                              You are offline. Services will be saved locally and synced when connection is restored.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
         </div>
+        </div>
+
+        {/* Modal */}
+        <Modal
+          isOpen={modal.isOpen}
+          onClose={closeModal}
+          title={modal.title}
+          message={modal.message}
+          type={modal.type}
+          autoClose={modal.type === "success"}
+          autoCloseDelay={3000}
+        />
       </div>
 
       <style jsx>{`
@@ -1444,6 +2012,23 @@ function AdminDashboardContent() {
           color: #15803d;
         }
 
+        .payment-badge {
+          padding: 4px 8px;
+          border-radius: 10px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .payment-badge.cash {
+          background: #fef3c7;
+          color: #d97706;
+        }
+
+        .payment-badge.mobile {
+          background: #dbeafe;
+          color: #1d4ed8;
+        }
+
         .status-badge {
           padding: 4px 8px;
           border-radius: 10px;
@@ -1547,19 +2132,150 @@ function AdminDashboardContent() {
         .retry-button:hover {
           transform: scale(1.05);
         }
+
+        .action-icon-button {
+          padding: 8px 12px;
+          border-radius: 8px;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          min-width: 40px;
+          min-height: 40px;
+        }
+
+        .action-icon-button.edit {
+          background: #dbeafe;
+          color: #1d4ed8;
+          border: 2px solid #bfdbfe;
+        }
+
+        .action-icon-button.edit:hover {
+          background: #bfdbfe;
+          transform: scale(1.1);
+          box-shadow: 0 2px 8px rgba(29, 78, 216, 0.3);
+        }
+
+        .action-icon-button.delete {
+          background: #fee2e2;
+          color: #dc2626;
+          border: 2px solid #fecaca;
+        }
+
+        .action-icon-button.delete:hover {
+          background: #fecaca;
+          transform: scale(1.1);
+          box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+        }
+
+        /* Modal Animations */
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
+        }
+
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: scale(0.9) translateY(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+
+        .animate-slideIn {
+          animation: slideIn 0.3s ease-out;
+        }
+
+        /* Modal Responsive Design */
+        @media (max-width: 768px) {
+          .modal-content {
+            margin: 1rem;
+            max-width: calc(100vw - 2rem);
+            max-height: calc(100vh - 2rem);
+          }
+        }
+
+        /* Modal Scrollbar Styling */
+        .modal-content::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .modal-content::-webkit-scrollbar-track {
+          background: #f1f5f9;
+          border-radius: 3px;
+        }
+
+        .modal-content::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 3px;
+        }
+
+        .modal-content::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
+
+        /* Submit Button and Loading Spinner Styles */
+        .submit-button {
+          padding: 0.75rem 1.5rem;
+          border-radius: 12px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          border: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+        }
+
+        .submit-button:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .submit-button:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .button-content {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+        }
+
+        .loading-spinner {
+          width: 16px;
+          height: 16px;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-top: 2px solid white;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
       `}</style>
-      
-      {/* Modal */}
-      <Modal
-        isOpen={modal.isOpen}
-        onClose={closeModal}
-        title={modal.title}
-        message={modal.message}
-        type={modal.type}
-        autoClose={modal.type === "success"}
-        autoCloseDelay={3000}
-      />
-    </div>
+    </>
   );
 }
 

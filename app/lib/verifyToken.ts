@@ -34,3 +34,20 @@ export const verifyToken = (req: Request): DecodedToken | null => {
     return null;
   }
 };
+
+// Add async version for token string
+export const verifyTokenAsync = async (token: string): Promise<DecodedToken | null> => {
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (typeof decoded === "object" && decoded !== null && "_id" in decoded && "name" in decoded && "phone" in decoded && "role" in decoded && "iat" in decoded && "exp" in decoded) {
+      console.log("Token verified successfully for user:", decoded);
+      return decoded as DecodedToken;
+    } else {
+      console.error("Decoded token does not match expected structure:", decoded);
+      return null;
+    }
+  } catch (error: unknown) {
+    console.error("Token verification failed:", error);
+    return null;
+  }
+};

@@ -14,8 +14,8 @@ const getMongoURI = () => {
     return `mongodb://${envURI}`;
   }
   
-  // Default local connection
-  return "mongodb://localhost:27017/barbershop-mgmt";
+  // Default local connection - using "test" database
+  return "mongodb://localhost:27017/test";
 };
 
 const MONGODB_URI = getMongoURI();
@@ -72,7 +72,7 @@ export const connectDB = async () => {
     console.log('   URI:', MONGODB_URI);
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-      console.log('✅ MongoDB connected successfully to local instance');
+      console.log('✅ MongoDB connected successfully to "test" database');
       return mongoose;
     }).catch((error) => {
       console.error('❌ MongoDB connection error:', error);
@@ -93,3 +93,10 @@ export const connectDB = async () => {
 };
 
 export default connectDB;
+
+// Add connectToDatabase function for direct MongoDB operations
+export const connectToDatabase = async () => {
+  const conn = await connectDB();
+  const db = conn.connection.db;
+  return { db, conn };
+};

@@ -17,6 +17,8 @@ export async function POST(req: Request) {
 
     const { serviceOperations } = await req.json();
     console.log("🔍 Received admin service operations:", serviceOperations);
+    console.log("🔍 First operation details:", serviceOperations[0]);
+    console.log("🔍 Payment method in first operation:", serviceOperations[0]?.by);
     
     if (!serviceOperations || !Array.isArray(serviceOperations) || serviceOperations.length === 0) {
       return NextResponse.json({ error: "Service operations array is required" }, { status: 400 });
@@ -43,6 +45,11 @@ export async function POST(req: Request) {
       if (!operation.price) {
         return NextResponse.json({ error: "Price is required" }, { status: 400 });
       }
+      
+      // Validate payment method if provided
+      if (operation.by && !['cash', 'mobile banking(telebirr)'].includes(operation.by)) {
+        return NextResponse.json({ error: "Invalid payment method. Must be 'cash' or 'mobile banking(telebirr)'" }, { status: 400 });
+      }
     }
 
     console.log("🔍 Processing admin service operations:", serviceOperations);
@@ -58,6 +65,7 @@ export async function POST(req: Request) {
     
     for (const operation of serviceOperations) {
       console.log("🔍 Creating admin service operation:", operation);
+      console.log("🔍 Payment method from operation:", operation.by);
       
       const adminServiceOperation = {
         name: operation.name,
@@ -66,8 +74,11 @@ export async function POST(req: Request) {
         createdAt: new Date(),
         workerName: operation.workerName,
         workerRole: operation.workerRole,
-        workerId: operation.workerId
+        workerId: operation.workerId,
+        by: operation.by || "cash" // Default to cash if not provided
       };
+      
+      console.log("🔍 Created admin service operation with payment method:", adminServiceOperation.by);
       
       // Add operation directly to database using $push
       await User.findByIdAndUpdate(decoded._id, {
@@ -87,7 +98,8 @@ export async function POST(req: Request) {
         price: op.price,
         workerName: op.workerName,
         workerRole: op.workerRole,
-        workerId: op.workerId
+        workerId: op.workerId,
+        by: op.by
       }))
     });
   } catch (error: unknown) {
@@ -132,6 +144,8 @@ export async function GET(req: Request) {
          // Add user info to each admin service operation
          const mappedOperations = userOperations.map((op: Record<string, unknown>, index: number) => {
           console.log(`🔍 Raw admin operation ${index} from ${user.name}:`, JSON.stringify(op, null, 2));
+          console.log(`🔍 Operation _id:`, op?._id);
+          console.log(`🔍 Operation _id type:`, typeof op?._id);
           
           // Ensure we have the correct structure
           const operation = {
@@ -142,7 +156,8 @@ export async function GET(req: Request) {
             workerName: op?.workerName || 'N/A',
             workerRole: op?.workerRole || 'N/A',
             workerId: op?.workerId || 'N/A',
-            _id: `${user._id}_admin_${index}_${Date.now()}` // Generate unique ID for React key
+            by: op?.by || 'cash', // Include payment method
+            _id: op?._id || `${user._id}_admin_${index}_${Date.now()}` // Use real MongoDB _id if available
           };
           
                      console.log(`🔍 Processed admin operation ${index}:`, JSON.stringify(operation, null, 2));

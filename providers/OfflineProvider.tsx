@@ -3,7 +3,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { useConnectionStatus } from '../hooks/useConnectionStatus';
 import { syncOperations } from '../utils/offlineQueue';
 import queueOperations from '../utils/offlineQueue';
-import { localforageUtils } from '../utils/localforageClient';
+import { localforageUtils, queueOperations as baseQueueOps } from '../utils/localforageClient';
 
 // Offline Provider Context
 // Manages sync operations and provides offline state to components
@@ -182,10 +182,18 @@ export function OfflineProvider({
   // Clear failed operations
   const clearFailedOperations = useCallback(async () => {
     try {
-      const allOperations = await queueOperations.getAll();
-      const failedOperations = allOperations.filter(op => op.status === 'failed');
+      // Get operations from all queues
+      const { salesQueue, productsQueue, servicesQueue } = queueOperations;
+      const salesOps = await salesQueue.getPendingSales();
+      const productOps = await productsQueue.getPendingProducts();
+      const serviceOps = await servicesQueue.getPendingServices();
+      
+      const allOperations = [...salesOps, ...productOps, ...serviceOps];
+      const failedOperations = allOperations.filter((op: any) => op.status === 'failed');
+      
+      // Remove failed operations using the base queue operations
       for (const operation of failedOperations) {
-        await queueOperations.remove(operation.id);
+        await baseQueueOps.remove(operation.id);
       }
 
       await updateQueueStatus();
@@ -202,7 +210,13 @@ export function OfflineProvider({
   // Get detailed queue status
   const getQueueStatus = useCallback(async () => {
     const status = await syncOperations.getSyncStatus();
-    const allOperations = await queueOperations.getAll();
+    
+    // Get operations from all queues
+    const { salesQueue, productsQueue, servicesQueue } = queueOperations;
+    const salesOps = await salesQueue.getPendingSales();
+    const productOps = await productsQueue.getPendingProducts();
+    const serviceOps = await servicesQueue.getPendingServices();
+    const allOperations = [...salesOps, ...productOps, ...serviceOps];
     
     return {
       ...status,
