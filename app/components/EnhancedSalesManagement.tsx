@@ -1237,6 +1237,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                           onImageRemove={() => setPaymentImageUrl("")}
                           currentImageUrl={paymentImageUrl}
                           disabled={loading}
+                          cameraOnly={true} // Force camera-only mode for mobile banking
                         />
                       </div>
                     )}

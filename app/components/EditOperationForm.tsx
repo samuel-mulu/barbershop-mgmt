@@ -373,6 +373,7 @@ export default function EditOperationForm({
                 onImageRemove={() => setPaymentImageUrl("")}
                 currentImageUrl={paymentImageUrl}
                 disabled={updating}
+                cameraOnly={true} // Force camera-only mode for mobile banking
               />
               
               {/* Image status indicator */}

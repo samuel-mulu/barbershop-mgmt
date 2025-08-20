@@ -1238,7 +1238,7 @@ function AdminDashboardContent() {
         {activeSection === 'history' && (
           <div className="container mb-6">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="section-title">Service Operations History</h2>
+              <h2 className="section-title"></h2>
               <div className="flex items-center gap-4">
                 {/* Payment Method Filter */}
                 <div className="flex items-center gap-2">
@@ -1265,7 +1265,6 @@ function AdminDashboardContent() {
                 {/* Polling Status Indicator */}
                 <div className="flex items-center gap-2 text-xs text-gray-600">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                  <span>Auto-refresh every 5s</span>
                 </div>
 
                 <button
@@ -1603,6 +1602,7 @@ function AdminDashboardContent() {
                     onImageRemove={() => setPaymentImageUrl("")}
                     currentImageUrl={paymentImageUrl}
                     disabled={updating}
+                    cameraOnly={true} // Force camera-only mode for mobile banking
                   />
                 </div>
               )}

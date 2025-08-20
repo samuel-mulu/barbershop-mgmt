@@ -7,13 +7,15 @@ interface ImageUploadProps {
   onImageRemove: () => void;
   currentImageUrl?: string;
   disabled?: boolean;
+  cameraOnly?: boolean; // New prop to force camera-only mode
 }
 
 export default function ImageUpload({ 
   onImageUpload, 
   onImageRemove, 
   currentImageUrl, 
-  disabled = false 
+  disabled = false,
+  cameraOnly = false
 }: ImageUploadProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -137,6 +139,31 @@ export default function ImageUpload({
 
   const startCamera = async () => {
     try {
+      // Check if we're on a mobile device
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      if (isMobile && cameraOnly) {
+        // For mobile devices in camera-only mode, use the device camera app
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.capture = 'environment'; // Force rear camera on mobile
+        input.style.display = 'none';
+        
+        input.onchange = (event) => {
+          const file = (event.target as HTMLInputElement).files?.[0];
+          if (file) {
+            handleFileSelect(file);
+          }
+          document.body.removeChild(input);
+        };
+        
+        document.body.appendChild(input);
+        input.click();
+        return;
+      }
+      
+      // For desktop or when not in camera-only mode, use web camera
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
@@ -226,43 +253,82 @@ export default function ImageUpload({
       {/* Upload Interface */}
       {!currentImageUrl && !showCamera && (
         <div
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
+          onDragOver={cameraOnly ? undefined : handleDragOver}
+          onDrop={cameraOnly ? undefined : handleDrop}
           className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
             disabled 
               ? 'border-gray-300 bg-gray-50' 
-              : 'border-blue-300 bg-blue-50 hover:border-blue-400 hover:bg-blue-100'
+              : cameraOnly
+                ? 'border-green-300 bg-green-50 hover:border-green-400 hover:bg-green-100'
+                : 'border-blue-300 bg-blue-50 hover:border-blue-400 hover:bg-blue-100'
           }`}
         >
           <div className="space-y-4">
-            <div className="flex justify-center space-x-4">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={disabled || isUploading}
-                className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
-              >
-                <Upload className="w-4 h-4" />
-                <span>Choose File</span>
-              </button>
-              
-              <button
-                type="button"
-                onClick={startCamera}
-                disabled={disabled || isUploading}
-                className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
-              >
-                <Camera className="w-4 h-4" />
-                <span>Camera</span>
-              </button>
-            </div>
-            
-            <p className="text-sm text-gray-600">
-              Drag and drop an image here, or click to select
-            </p>
-            <p className="text-xs text-gray-500">
-              Any image format and size accepted
-            </p>
+                         {cameraOnly ? (
+               // Camera-only mode for mobile banking
+               <div className="space-y-4">
+                 <div className="flex justify-center">
+                   <button
+                     type="button"
+                     onClick={startCamera}
+                     disabled={disabled || isUploading}
+                     className="flex items-center space-x-2 px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 text-lg font-semibold"
+                   >
+                     <Camera className="w-5 h-5" />
+                     <span>📱 Open Phone Camera</span>
+                   </button>
+                 </div>
+                 
+                 <div className="text-center space-y-2">
+                   <p className="text-sm text-green-700 font-medium">
+                     📸 Mobile Banking Payment Proof Required
+                   </p>
+                   <p className="text-xs text-green-600">
+                     Opens your phone's camera app to capture payment confirmation
+                   </p>
+                   <p className="text-xs text-gray-500">
+                     Uses device camera app, not website camera
+                   </p>
+                 </div>
+               </div>
+            ) : (
+              // Normal mode with file upload and camera options
+              <>
+                <div className="flex justify-center space-x-4">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={disabled || isUploading}
+                    className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
+                  >
+                    <Upload className="w-4 h-4" />
+                    <span>Choose File</span>
+                  </button>
+                  
+                  <button
+                    type="button"
+                    onClick={startCamera}
+                    disabled={disabled || isUploading}
+                    className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <span>{/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 'Phone Camera' : 'Camera'}</span>
+                  </button>
+                </div>
+                
+                <p className="text-sm text-gray-600">
+                  Drag and drop an image here, or click to select
+                </p>
+                <p className="text-xs text-gray-500">
+                  Any image format and size accepted
+                </p>
+                {/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && (
+                  <p className="text-xs text-blue-600">
+                    📱 Camera button opens your phone's camera app
+                  </p>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
@@ -286,21 +352,41 @@ export default function ImageUpload({
             </button>
           </div>
           
-          <div className="flex justify-center space-x-4">
-            <button
-              type="button"
-              onClick={captureImage}
-              className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              📸 Capture
-            </button>
-            <button
-              type="button"
-              onClick={stopCamera}
-              className="px-6 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
-            >
-              Cancel
-            </button>
+          <div className="text-center space-y-3">
+            {cameraOnly && (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="text-sm text-green-700 font-medium">
+                  📱 Mobile Banking Payment Proof
+                </p>
+                <p className="text-xs text-green-600">
+                  {/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+                    ? 'Using your phone camera app to capture payment confirmation'
+                    : 'Position your payment confirmation screen in the camera view'
+                  }
+                </p>
+              </div>
+            )}
+            
+            <div className="flex justify-center space-x-4">
+              <button
+                type="button"
+                onClick={captureImage}
+                className={`px-6 py-3 text-white rounded-lg transition-colors font-semibold ${
+                  cameraOnly 
+                    ? 'bg-green-500 hover:bg-green-600' 
+                    : 'bg-blue-500 hover:bg-blue-600'
+                }`}
+              >
+                📸 {cameraOnly ? 'Capture Payment Proof' : 'Capture'}
+              </button>
+              <button
+                type="button"
+                onClick={stopCamera}
+                className="px-6 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors font-semibold"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}
