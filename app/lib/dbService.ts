@@ -57,6 +57,8 @@ export class DatabaseService {
   static async updateProductQuantity(productId: string, newQuantity: number) {
     await connectDB();
     
+    console.log(`🛒 [DB-SERVICE] Updating product ${productId} quantity to:`, newQuantity);
+    
     const result = await User.updateOne(
       { "products._id": new mongoose.Types.ObjectId(productId) },
       { 
@@ -66,6 +68,12 @@ export class DatabaseService {
         }
       }
     );
+
+    console.log(`🛒 [DB-SERVICE] Update result:`, {
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount,
+      success: result.matchedCount > 0
+    });
 
     if (result.matchedCount === 0) {
       throw new Error('Product not found');
@@ -153,10 +161,17 @@ export class DatabaseService {
   }
 
   // Product Sale operations within User document
-  static async getProductSales(adminId: string) {
+  static async getProductSales(adminId: string, status?: string) {
     await connectDB();
     const user = await User.findById(adminId);
-    return user?.productSales || [];
+    const productSales = user?.productSales || [];
+    
+    // Filter by status if provided
+    if (status) {
+      return productSales.filter(sale => sale.status === status) as any;
+    }
+    
+    return productSales;
   }
 
   static async createProductSale(adminId: string, productSaleData: any) {
@@ -171,14 +186,28 @@ export class DatabaseService {
       user.productSales = [];
     }
 
+    console.log('🛒 DatabaseService - Received product sale data:', productSaleData);
+    console.log('🛒 DatabaseService - Payment method:', productSaleData.by);
+    console.log('🛒 DatabaseService - Payment image URL:', productSaleData.paymentImageUrl);
+    console.log('🛒 DatabaseService - Status:', productSaleData.status);
+
     const newProductSale = {
       ...productSaleData,
       _id: new mongoose.Types.ObjectId(),
-      createdAt: new Date()
+      createdAt: new Date(),
+      status: productSaleData.status || 'pending' // Ensure status is explicitly set
     };
+
+    console.log('🛒 DatabaseService - Final product sale object:', newProductSale);
+    console.log('🛒 DatabaseService - Status in final object:', newProductSale.status);
 
     user.productSales.push(newProductSale);
     await user.save();
+    
+    console.log('🛒 DatabaseService - Saved to database. Total sales:', user.productSales.length);
+    console.log('🛒 DatabaseService - Last sale payment image URL:', user.productSales[user.productSales.length - 1]?.paymentImageUrl);
+    console.log('🛒 DatabaseService - Last sale status:', user.productSales[user.productSales.length - 1]?.status);
+    
     return newProductSale;
   }
 
@@ -329,5 +358,146 @@ export class DatabaseService {
     user.withdrawals.splice(withdrawalIndex, 1);
     await user.save();
     return deletedWithdrawal;
+  }
+
+  // Admin Service Operations within User document
+  static async getAdminServiceOperations(adminId: string) {
+    await connectDB();
+    const user = await User.findById(adminId);
+    return user?.adminServiceOperations || [];
+  }
+
+  static async createAdminServiceOperation(adminId: string, operationData: any) {
+    await connectDB();
+    const user = await User.findById(adminId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Ensure adminServiceOperations array exists
+    if (!user.adminServiceOperations) {
+      user.adminServiceOperations = [];
+    }
+
+    const newOperation = {
+      ...operationData,
+      _id: new mongoose.Types.ObjectId(),
+      createdAt: new Date()
+    };
+
+    user.adminServiceOperations.push(newOperation);
+    await user.save();
+    return newOperation;
+  }
+
+  static async getAdminServiceOperationById(adminId: string, operationId: string) {
+    await connectDB();
+    const user = await User.findById(adminId);
+    if (!user) return null;
+    
+    return user.adminServiceOperations?.find(operation => operation._id.toString() === operationId);
+  }
+
+  static async updateAdminServiceOperation(adminId: string, operationId: string, updateData: any) {
+    await connectDB();
+    const user = await User.findById(adminId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (!user.adminServiceOperations) {
+      throw new Error('Admin service operations array not found');
+    }
+
+
+
+    // Find operation by ID or by matching properties if no ID exists
+    let operationIndex = -1;
+    
+    // First try to find by ID
+    operationIndex = user.adminServiceOperations.findIndex(operation => 
+      operation._id && operation._id.toString() === operationId
+    );
+    
+    // If not found by ID, try to find by matching properties
+    if (operationIndex === -1) {
+      // Use original operation data for matching if available
+      const originalOperation = updateData.originalOperation;
+      if (originalOperation) {
+        operationIndex = user.adminServiceOperations.findIndex(operation => {
+          // Match by essential properties from original operation
+          return operation.name === originalOperation.name &&
+                 operation.price === originalOperation.price &&
+                 operation.workerName === originalOperation.workerName &&
+                 operation.workerRole === originalOperation.workerRole &&
+                 operation.by === originalOperation.by;
+        });
+      } else {
+        // Fallback: try to find by update data properties
+        operationIndex = user.adminServiceOperations.findIndex(operation => {
+          return operation.name === updateData.name &&
+                 operation.price === updateData.price &&
+                 operation.workerName === updateData.workerName &&
+                 operation.workerRole === updateData.workerRole &&
+                 operation.by === updateData.by;
+        });
+      }
+    }
+
+    if (operationIndex === -1) {
+      throw new Error('Admin service operation not found');
+    }
+
+    // Ensure the operation has an _id field
+    if (!user.adminServiceOperations[operationIndex]._id) {
+      user.adminServiceOperations[operationIndex]._id = new mongoose.Types.ObjectId();
+    }
+
+    // Remove originalOperation from updateData before saving
+    const { originalOperation, ...cleanUpdateData } = updateData;
+    
+
+    
+
+    
+    user.adminServiceOperations[operationIndex] = {
+      ...user.adminServiceOperations[operationIndex],
+      ...cleanUpdateData,
+      updatedAt: new Date()
+    };
+    
+
+    
+
+
+    // Mark the adminServiceOperations array as modified to ensure it gets saved
+    user.markModified('adminServiceOperations');
+    
+    // Force save and verify the data was saved
+    await user.save();
+    
+    return user.adminServiceOperations[operationIndex];
+  }
+
+  static async deleteAdminServiceOperation(adminId: string, operationId: string) {
+    await connectDB();
+    const user = await User.findById(adminId);
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    if (!user.adminServiceOperations) {
+      throw new Error('Admin service operations array not found');
+    }
+
+    const operationIndex = user.adminServiceOperations.findIndex(operation => operation._id.toString() === operationId);
+    if (operationIndex === -1) {
+      throw new Error('Admin service operation not found');
+    }
+
+    const deletedOperation = user.adminServiceOperations[operationIndex];
+    user.adminServiceOperations.splice(operationIndex, 1);
+    await user.save();
+    return deletedOperation;
   }
 }

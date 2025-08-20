@@ -3,6 +3,12 @@ import React, { useState } from "react";
 import EthiopianDate from "@/components/EthiopianDate";
 import { gregorianToEthiopian } from "@/utils/ethiopianCalendar";
 import Modal from "@/components/ui/modal";
+
+// Ethiopian calendar months for sorting
+const ETHIOPIAN_MONTHS = [
+  'Meskerem', 'Tikimt', 'Hidar', 'Tahsas', 'Tir', 'Yekatit',
+  'Megabit', 'Miyazya', 'Ginbot', 'Sene', 'Hamle', 'Nehasie'
+];
 import {
   ArrowLeft,
   Calendar,
@@ -14,7 +20,10 @@ import {
   Droplets,
   ChevronDown,
   ChevronRight,
-  Phone
+  Phone,
+  Eye,
+  Download,
+  X
 } from "lucide-react";
 
 interface User {
@@ -30,6 +39,8 @@ interface User {
     createdAt: string;
     finishedDate?: string;
     originalPrice?: number;
+    by?: 'cash' | 'mobile banking(telebirr)';
+    paymentImageUrl?: string;
   }>;
   adminServiceOperations?: Array<{
     name: string;
@@ -40,6 +51,8 @@ interface User {
     workerName: string;
     workerRole: string;
     workerId: string;
+    by?: 'cash' | 'mobile banking(telebirr)';
+    paymentImageUrl?: string;
   }>;
 }
 
@@ -55,6 +68,8 @@ interface ServiceOperation {
   workerId?: string;
   originalPrice?: number;
   operationIndex?: number;
+  by?: 'cash' | 'mobile banking(telebirr)';
+  paymentImageUrl?: string;
 }
 
 interface ReportsSectionProps {
@@ -70,6 +85,9 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
   const [expandedOperations, setExpandedOperations] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
   const [updateProgress, setUpdateProgress] = useState({ current: 0, total: 0, isUpdating: false });
+  
+  // Payment proof preview state
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   
   // Modal state
   const [modal, setModal] = useState<{
@@ -88,22 +106,47 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
   const getOperations = (): ServiceOperation[] => {
     if (!selectedUser) return [];
     
+    let operations: ServiceOperation[] = [];
     if (selectedUser.role === 'admin') {
-      return selectedUser.adminServiceOperations || [];
+      operations = selectedUser.adminServiceOperations || [];
     } else {
-      return selectedUser.serviceOperations || [];
+      operations = selectedUser.serviceOperations || [];
     }
+    
+    // Debug: Log operations with payment fields
+    console.log('🔍 ReportsSection - Operations with payment fields:', operations.map(op => ({
+      name: op.name,
+      by: op.by,
+      paymentImageUrl: op.paymentImageUrl
+    })));
+    
+    return operations;
   };
 
   const closeModal = () => {
     setModal(prev => ({ ...prev, isOpen: false }));
   };
 
+  // Payment proof utility functions
+  const downloadPaymentProof = (imageUrl: string, serviceName: string) => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = `payment-proof-${serviceName}-${new Date().toISOString().split('T')[0]}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const getPaymentMethodDisplay = (paymentMethod?: string) => {
+    if (!paymentMethod) return null;
+    return paymentMethod === 'cash' ? '💵 Cash' : '📱 Mobile Banking';
+  };
+
   // Group operations by Ethiopian date with numbering (only pending operations)
   const groupOperationsByDate = (operations: ServiceOperation[]) => {
     const grouped: { [key: string]: ServiceOperation[] } = {};
     
-    // Filter only pending operations but preserve original indices
+    // Filter only pending operations but preserve original indices and all fields
     operations.forEach((operation, originalIndex) => {
       if (operation.status === 'pending') {
         const date = new Date(operation.createdAt);
@@ -113,8 +156,20 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
         if (!grouped[ethiopianDateKey]) {
           grouped[ethiopianDateKey] = [];
         }
-        grouped[ethiopianDateKey].push({ ...operation, operationIndex: originalIndex });
+        // Preserve all operation fields including payment fields
+        const operationWithIndex = {
+          ...operation,
+          operationIndex: originalIndex,
+          by: operation.by,
+          paymentImageUrl: operation.paymentImageUrl
+        };
+        grouped[ethiopianDateKey].push(operationWithIndex);
       }
+    });
+    
+    // Sort operations within each date group by newest first
+    Object.keys(grouped).forEach(dateKey => {
+      grouped[dateKey].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     });
     
     return grouped;
@@ -322,7 +377,22 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
       if (!grouped[ethiopianDateKey]) {
         grouped[ethiopianDateKey] = [];
       }
-      grouped[ethiopianDateKey].push(operation);
+      // Preserve all operation fields including payment fields
+      const operationWithPaymentFields = {
+        ...operation,
+        by: operation.by,
+        paymentImageUrl: operation.paymentImageUrl
+      };
+      grouped[ethiopianDateKey].push(operationWithPaymentFields);
+    });
+    
+    // Sort operations within each date group by newest first
+    Object.keys(grouped).forEach(dateKey => {
+      grouped[dateKey].sort((a, b) => {
+        const dateA = new Date(a.finishedDate || a.createdAt);
+        const dateB = new Date(b.finishedDate || b.createdAt);
+        return dateB.getTime() - dateA.getTime();
+      });
     });
     
     return grouped;
@@ -497,7 +567,12 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
             {(() => {
               const operations = getOperations();
               const groupedOperations = groupOperationsByDate(operations);
-              const dates = Object.keys(groupedOperations);
+              const dates = Object.keys(groupedOperations).sort((a, b) => {
+                // Sort by Ethiopian date (newest first)
+                const dateA = new Date(a.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(a.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + a.split(' ')[0].padStart(2, '0'));
+                const dateB = new Date(b.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(b.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + b.split(' ')[0].padStart(2, '0'));
+                return dateB.getTime() - dateA.getTime();
+              });
 
               if (dates.length === 0) {
                 return (
@@ -578,6 +653,11 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                           <span className="operation-price">
                                             {operation.price}ብር
                                           </span>
+                                          {operation.by && (
+                                            <span className="payment-method-badge">
+                                              {getPaymentMethodDisplay(operation.by)}
+                                            </span>
+                                          )}
                                           <span className="operation-date">
                                             <Calendar className="w-3 h-3 mr-1" />
                                             <EthiopianDate dateString={operation.createdAt} showTime={true} showWeekday={false} />
@@ -586,6 +666,27 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                             </div>
                                             </div>
                                                                           <div className="operation-actions">
+                                            {/* Payment proof buttons for mobile banking */}
+                                            {operation.by === 'mobile banking(telebirr)' && operation.paymentImageUrl && (
+                                              <div className="payment-proof-buttons">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setPreviewImage(previewImage === operation.paymentImageUrl ? null : (operation.paymentImageUrl || null))}
+                                                  className="view-button"
+                                                  title="View payment proof"
+                                                >
+                                                  <Eye className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => downloadPaymentProof(operation.paymentImageUrl!, operation.name)}
+                                                  className="download-button"
+                                                  title="Download payment proof"
+                                                >
+                                                  <Download className="w-4 h-4" />
+                                                </button>
+                                              </div>
+                                            )}
                               <button
                                           onClick={() => toggleOperationExpansion(operationKey)}
                                           className="expand-button small"
@@ -619,6 +720,14 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                             Pending
                                         </div>
                                             </div>
+                                        {operation.by && (
+                                          <div className="detail-item">
+                                            <label>Payment Method</label>
+                                            <div className="payment-method">
+                                              {getPaymentMethodDisplay(operation.by)}
+                                            </div>
+                                          </div>
+                                        )}
                                             </div>
                                               </div>
                                             )}
@@ -641,7 +750,12 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
         {(() => {
           const finishedOperations = getFinishedOperations();
               const groupedFinished = groupFinishedOperationsByDate(finishedOperations);
-              const finishedDates = Object.keys(groupedFinished);
+              const finishedDates = Object.keys(groupedFinished).sort((a, b) => {
+                // Sort by Ethiopian date (newest first)
+                const dateA = new Date(a.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(a.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + a.split(' ')[0].padStart(2, '0'));
+                const dateB = new Date(b.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(b.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + b.split(' ')[0].padStart(2, '0'));
+                return dateB.getTime() - dateA.getTime();
+              });
           
               if (finishedDates.length === 0) {
             return (
@@ -700,16 +814,44 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                           <div className="finished-operations-list">
                             {dateOperations.map((operation, index) => (
                               <div key={index} className="finished-operation-item">
+                                <div className="finished-operation-header">
                                 <div className="operation-info">
                                   <h5 className="operation-name">{operation.name}</h5>
                                   <div className="operation-meta">
                                     <span className="operation-price">{operation.price}ብር</span>
+                                      {operation.by && (
+                                        <span className="payment-method-badge">
+                                          {getPaymentMethodDisplay(operation.by)}
+                                        </span>
+                                      )}
                                     <span className="operation-time">
                                       {operation.finishedDate && 
                                         calculateTimeDifference(operation.createdAt, operation.finishedDate)
                                       }
                                     </span>
                                   </div>
+                                  </div>
+                                  {/* Payment proof buttons for mobile banking */}
+                                  {operation.by === 'mobile banking(telebirr)' && operation.paymentImageUrl && (
+                                    <div className="payment-proof-buttons">
+                                      <button
+                                        type="button"
+                                        onClick={() => setPreviewImage(previewImage === operation.paymentImageUrl ? null : (operation.paymentImageUrl || null))}
+                                        className="view-button"
+                                        title="View payment proof"
+                                      >
+                                        <Eye className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => downloadPaymentProof(operation.paymentImageUrl!, operation.name)}
+                                        className="download-button"
+                                        title="Download payment proof"
+                                      >
+                                        <Download className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="operation-timeline">
                                   <div className="timeline-item">
@@ -1238,10 +1380,123 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
           align-items: center;
         }
 
+        .payment-method-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          padding: 0.25rem 0.75rem;
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+          color: #1d4ed8;
+        }
+
         .operation-actions {
           display: flex;
           align-items: center;
           gap: 0.5rem;
+        }
+
+        .payment-proof-buttons {
+          display: flex;
+          gap: 0.5rem;
+        }
+
+        .view-button, .download-button {
+          background: white;
+          border: 1px solid #e2e8f0;
+          padding: 0.5rem;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .view-button {
+          color: #3b82f6;
+        }
+
+        .view-button:hover {
+          background: #eff6ff;
+          border-color: #3b82f6;
+        }
+
+        .download-button {
+          color: #10b981;
+        }
+
+        .download-button:hover {
+          background: #f0fdf4;
+          border-color: #10b981;
+        }
+
+        .payment-method {
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+          font-weight: 600;
+        }
+
+        .payment-proof-backdrop {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 9999;
+          cursor: pointer;
+        }
+
+        .payment-proof-preview {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: white;
+          border-radius: 16px;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+          z-index: 10000;
+          max-width: 90vw;
+          max-height: 90vh;
+          overflow: hidden;
+        }
+
+        .preview-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1rem 1.5rem;
+          border-bottom: 1px solid #e2e8f0;
+          background: #f8fafc;
+        }
+
+        .preview-title {
+          font-size: 1rem;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .close-preview {
+          background: none;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          padding: 0.25rem;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+        }
+
+        .close-preview:hover {
+          background: #e2e8f0;
+          color: #374151;
+        }
+
+        .preview-image {
+          max-width: 100%;
+          max-height: 70vh;
+          object-fit: contain;
+          display: block;
         }
 
         .operation-details-expanded {
@@ -1365,6 +1620,13 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
           transition: all 0.2s ease;
         }
 
+        .finished-operation-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 1rem;
+        }
+
         .finished-operation-item:hover {
           transform: translateY(-1px);
           box-shadow: 0 4px 16px rgba(16, 185, 129, 0.15);
@@ -1455,6 +1717,30 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
           }
         }
       `}</style>
+      
+      {/* Payment proof preview */}
+      {previewImage && (
+        <>
+          <div className="payment-proof-backdrop" onClick={() => setPreviewImage(null)}></div>
+          <div className="payment-proof-preview">
+            <div className="preview-header">
+              <span className="preview-title">Payment Proof</span>
+              <button
+                type="button"
+                onClick={() => setPreviewImage(null)}
+                className="close-preview"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <img 
+              src={previewImage} 
+              alt="Payment proof" 
+              className="preview-image"
+            />
+          </div>
+        </>
+      )}
       
       {/* Modal */}
       <Modal

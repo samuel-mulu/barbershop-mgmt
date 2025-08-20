@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import User from "@/models/User";
 import { connectDB } from "@/lib/db";
 import { verifyToken } from "@/lib/verifyToken";
+import mongoose from "mongoose";
 
 export async function POST(req: Request) {
   try {
@@ -19,6 +20,8 @@ export async function POST(req: Request) {
     console.log("🔍 Received admin service operations:", serviceOperations);
     console.log("🔍 First operation details:", serviceOperations[0]);
     console.log("🔍 Payment method in first operation:", serviceOperations[0]?.by);
+    console.log("🔍 Payment image URL in first operation:", serviceOperations[0]?.paymentImageUrl);
+    console.log("🔍 All operations payment image URLs:", serviceOperations.map(op => ({ name: op.name, paymentImageUrl: op.paymentImageUrl })));
     
     if (!serviceOperations || !Array.isArray(serviceOperations) || serviceOperations.length === 0) {
       return NextResponse.json({ error: "Service operations array is required" }, { status: 400 });
@@ -66,8 +69,10 @@ export async function POST(req: Request) {
     for (const operation of serviceOperations) {
       console.log("🔍 Creating admin service operation:", operation);
       console.log("🔍 Payment method from operation:", operation.by);
+      console.log("🔍 Payment image URL from operation:", operation.paymentImageUrl);
       
       const adminServiceOperation = {
+        _id: new mongoose.Types.ObjectId(), // Generate a proper MongoDB ObjectId
         name: operation.name,
         price: operation.price, // Full price for admin
         status: "pending",
@@ -75,17 +80,26 @@ export async function POST(req: Request) {
         workerName: operation.workerName,
         workerRole: operation.workerRole,
         workerId: operation.workerId,
-        by: operation.by || "cash" // Default to cash if not provided
+        by: operation.by || "cash", // Default to cash if not provided
+        paymentImageUrl: operation.paymentImageUrl || undefined
       };
       
       console.log("🔍 Created admin service operation with payment method:", adminServiceOperation.by);
+      console.log("🔍 Created admin service operation with payment image:", adminServiceOperation.paymentImageUrl);
       
       // Add operation directly to database using $push
-      await User.findByIdAndUpdate(decoded._id, {
+      const updateResult = await User.findByIdAndUpdate(decoded._id, {
         $push: { adminServiceOperations: adminServiceOperation }
       });
       
+      console.log("🔍 Database update result:", updateResult);
       console.log("🔍 Added admin service operation to user:", adminUser.name);
+      
+      // Verify the operation was saved by fetching the user again
+      const updatedUser = await User.findById(decoded._id).select("adminServiceOperations");
+      console.log("🔍 Updated user adminServiceOperations count:", updatedUser?.adminServiceOperations?.length);
+      console.log("🔍 Latest operation saved:", updatedUser?.adminServiceOperations?.[updatedUser.adminServiceOperations.length - 1]);
+      console.log("🔍 Latest operation payment image URL:", updatedUser?.adminServiceOperations?.[updatedUser.adminServiceOperations.length - 1]?.paymentImageUrl);
       createdOperations.push(adminServiceOperation);
     }
 
@@ -94,12 +108,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ 
       message: "Admin service operations saved successfully",
       results: createdOperations.map(op => ({
+        _id: op._id ? op._id.toString() : undefined,
         name: op.name,
         price: op.price,
         workerName: op.workerName,
         workerRole: op.workerRole,
         workerId: op.workerId,
-        by: op.by
+        by: op.by,
+        paymentImageUrl: op.paymentImageUrl
       }))
     });
   } catch (error: unknown) {
@@ -124,6 +140,24 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Migration: Add _id fields to operations that don't have them
+    const adminUser = await User.findById(decoded._id);
+    if (adminUser && adminUser.adminServiceOperations) {
+      let needsUpdate = false;
+      adminUser.adminServiceOperations.forEach((op: any, index: number) => {
+        if (!op._id) {
+          op._id = new mongoose.Types.ObjectId();
+          needsUpdate = true;
+          console.log(`🔧 Added _id to operation ${index}:`, op._id.toString());
+        }
+      });
+      
+      if (needsUpdate) {
+        await adminUser.save();
+        console.log("🔧 Migration completed: Added _id fields to operations");
+      }
+    }
+
     // const { searchParams } = new URL(req.url);
 
     const query: Record<string, unknown> = {};
@@ -135,11 +169,15 @@ export async function GET(req: Request) {
          console.log("🔍 GET admin service operations query:", query);
      const adminUsers = await User.find(query).select("adminServiceOperations name");
      
+     console.log("🔍 Found admin users:", adminUsers.length);
+     console.log("🔍 Admin user data:", JSON.stringify(adminUsers, null, 2));
+     
      // Extract admin service operations from all admin users
      const allAdminServiceOperations = adminUsers.reduce((operations: Array<Record<string, unknown>>, user: Record<string, unknown>) => {
        // Handle users without adminServiceOperations field
        const userOperations = (user.adminServiceOperations as Array<Record<string, unknown>>) || [];
        console.log(`🔍 Admin user ${user.name} has ${userOperations.length} admin service operations`);
+       console.log(`🔍 User adminServiceOperations field:`, JSON.stringify(userOperations, null, 2));
               if (userOperations.length > 0) {
          // Add user info to each admin service operation
          const mappedOperations = userOperations.map((op: Record<string, unknown>, index: number) => {
@@ -157,11 +195,13 @@ export async function GET(req: Request) {
             workerRole: op?.workerRole || 'N/A',
             workerId: op?.workerId || 'N/A',
             by: op?.by || 'cash', // Include payment method
-            _id: op?._id || `${user._id}_admin_${index}_${Date.now()}` // Use real MongoDB _id if available
+            paymentImageUrl: op?.paymentImageUrl || undefined, // Include payment image URL
+            _id: op?._id ? op._id.toString() : `${user._id}_admin_${index}_${Date.now()}` // Convert ObjectId to string or generate fallback
           };
           
                      console.log(`🔍 Processed admin operation ${index}:`, JSON.stringify(operation, null, 2));
-           return operation;
+          console.log(`🔍 Operation ${index} payment image URL:`, operation.paymentImageUrl);
+          return operation;
          });
          operations.push(...mappedOperations);
          console.log(`🔍 Added ${mappedOperations.length} admin operations from user ${user.name}`);

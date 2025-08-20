@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import useSWR from "swr";
 import {
   User,
@@ -15,7 +15,9 @@ import {
   Package,
   ShoppingCart,
   DollarSign,
-  ChevronDown as ChevronDownIcon
+  ChevronDown as ChevronDownIcon,
+  Users,
+  TrendingUp
 } from "lucide-react";
 
 const fetcher = (url: string) => {
@@ -57,6 +59,8 @@ interface User {
     createdAt: string;
     finishedDate?: string;
     originalPrice?: number;
+    by?: 'cash' | 'mobile banking(telebirr)';
+    paymentImageUrl?: string;
   }>;
   adminServiceOperations?: Array<{
     name: string;
@@ -67,6 +71,8 @@ interface User {
     workerName: string;
     workerRole: string;
     workerId: string;
+    by?: 'cash' | 'mobile banking(telebirr)';
+    paymentImageUrl?: string;
   }>;
 }
 
@@ -91,6 +97,7 @@ export default function StaffSection({
     washer: false
   });
   const [dropdownStates, setDropdownStates] = useState<Record<string, boolean>>({});
+  const dropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Fetch all branches for this owner
   const { data: branches = [], isLoading: loadingBranches, error: branchesError } = useSWR(
@@ -103,6 +110,39 @@ export default function StaffSection({
     ownerId ? `/api/users?ownerId=${ownerId}` : null,
     fetcher
   );
+
+  // Handle click outside dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      let shouldClose = true;
+      
+      // Check if click is inside any dropdown
+      Object.keys(dropdownStates).forEach(userId => {
+        if (dropdownStates[userId] && dropdownRefs.current[userId]) {
+          if (dropdownRefs.current[userId]?.contains(target)) {
+            shouldClose = false;
+          }
+        }
+      });
+      
+      // Only close if click is outside all dropdowns
+      if (shouldClose) {
+        setDropdownStates(prev => {
+          const newState = { ...prev };
+          Object.keys(newState).forEach(userId => {
+            newState[userId] = false;
+          });
+          return newState;
+        });
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [dropdownStates]);
 
   // Group users by branch with error handling
   interface UsersByBranch {
@@ -200,13 +240,19 @@ export default function StaffSection({
   };
 
   const toggleDropdown = (userId: string) => {
-    setDropdownStates(prev => ({
-      ...prev,
-      [userId]: !prev[userId]
-    }));
+    console.log('Toggle dropdown for user:', userId);
+    setDropdownStates(prev => {
+      const newState = {
+        ...prev,
+        [userId]: !prev[userId]
+      };
+      console.log('New dropdown state:', newState);
+      return newState;
+    });
   };
 
   const handleDataSelection = (userId: string, dataType: 'products' | 'productSales' | 'withdrawals') => {
+    console.log('Data selection:', userId, dataType);
     onViewOwnerData(userId, dataType);
     setDropdownStates(prev => ({
       ...prev,
@@ -350,38 +396,46 @@ export default function StaffSection({
                         
                         <div className="user-actions">
                           {user.role === 'admin' && (
-                            <div className="dropdown-container">
+                            <div 
+                              className="dropdown-container"
+                              ref={(el) => {
+                                dropdownRefs.current[user._id] = el;
+                              }}
+                            >
                               <button
                                 onClick={() => toggleDropdown(user._id)}
                                 className="action-button dropdown"
                               >
-                                <span>Select to view</span>
-                                <ChevronDownIcon className="w-4 h-4 ml-2" />
+                                <span>View Data</span>
+                                <ChevronDownIcon className={`w-4 h-4 ml-2 transition-transform ${dropdownStates[user._id] ? 'rotate-180' : ''}`} />
                               </button>
                               {dropdownStates[user._id] && (
-                                <div className="dropdown-menu">
-                                  <button
-                                    onClick={() => handleDataSelection(user._id, 'products')}
-                                    className="dropdown-item"
-                                  >
-                                    <Package className="w-4 h-4 mr-2" />
-                                    Products
-                                  </button>
-                                  <button
-                                    onClick={() => handleDataSelection(user._id, 'productSales')}
-                                    className="dropdown-item"
-                                  >
-                                    <ShoppingCart className="w-4 h-4 mr-2" />
-                                    Product Sales
-                                  </button>
-                                  <button
-                                    onClick={() => handleDataSelection(user._id, 'withdrawals')}
-                                    className="dropdown-item"
-                                  >
-                                    <DollarSign className="w-4 h-4 mr-2" />
-                                    Withdrawals
-                                  </button>
-                                </div>
+                                <>
+                                  <div className="dropdown-backdrop" onClick={() => toggleDropdown(user._id)}></div>
+                                  <div className="dropdown-menu">
+                                    <button
+                                      onClick={() => handleDataSelection(user._id, 'products')}
+                                      className="dropdown-item"
+                                    >
+                                      <Package className="w-4 h-4 mr-2" />
+                                      Products
+                                    </button>
+                                    <button
+                                      onClick={() => handleDataSelection(user._id, 'productSales')}
+                                      className="dropdown-item"
+                                    >
+                                      <ShoppingCart className="w-4 h-4 mr-2" />
+                                      Product Sales
+                                    </button>
+                                    <button
+                                      onClick={() => handleDataSelection(user._id, 'withdrawals')}
+                                      className="dropdown-item"
+                                    >
+                                      <DollarSign className="w-4 h-4 mr-2" />
+                                      Withdrawals
+                                    </button>
+                                  </div>
+                                </>
                               )}
                             </div>
                           )}
@@ -718,6 +772,11 @@ export default function StaffSection({
           padding: 1.5rem;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
           border: 1px solid rgba(0, 0, 0, 0.05);
+          position: relative;
+        }
+
+        .user-card:has(.dropdown-menu) {
+          z-index: 9998;
         }
 
         .user-header {
@@ -789,14 +848,15 @@ export default function StaffSection({
         .action-button {
           display: flex;
           align-items: center;
-          padding: 0.5rem 1rem;
-          border-radius: 8px;
-          font-weight: 500;
+          padding: 0.75rem 1.25rem;
+          border-radius: 12px;
+          font-weight: 600;
           font-size: 0.875rem;
           cursor: pointer;
           transition: all 0.2s ease;
           border: none;
           text-decoration: none;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
         .action-button.primary {
@@ -821,18 +881,44 @@ export default function StaffSection({
         }
 
         .action-button.dropdown {
-          background: linear-gradient(135deg, #667eea, #764ba2);
+          background: linear-gradient(135deg, #10b981 0%, #047857 100%);
           color: white;
           position: relative;
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
         }
 
         .action-button.dropdown:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(16, 185, 129, 0.4);
         }
 
         .dropdown-container {
           position: relative;
+          z-index: 1;
+        }
+
+        .dropdown-container:has(.dropdown-menu) {
+          z-index: 9999;
+        }
+
+        .dropdown-backdrop {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: transparent;
+          z-index: 9998;
+        }
+
+        .user-actions {
+          display: flex;
+          gap: 0.75rem;
+          position: relative;
+        }
+
+        .user-actions:has(.dropdown-menu) {
+          z-index: 9999;
         }
 
         .dropdown-menu {
@@ -841,32 +927,46 @@ export default function StaffSection({
           left: 0;
           right: 0;
           background: white;
-          border-radius: 8px;
-          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-          border: 1px solid rgba(0, 0, 0, 0.1);
-          z-index: 1000;
+          border-radius: 12px;
+          box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+          border: 2px solid rgba(255, 255, 255, 0.2);
+          z-index: 99999;
           overflow: hidden;
-          margin-top: 0.25rem;
+          margin-top: 0.5rem;
+          animation: slideDown 0.2s ease-out;
+          min-width: 200px;
+          transform: translateZ(0);
+        }
+
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
 
         .dropdown-item {
           display: flex;
           align-items: center;
           width: 100%;
-          padding: 0.75rem 1rem;
+          padding: 1rem 1.25rem;
           border: none;
           background: transparent;
           color: #1e293b;
           font-size: 0.875rem;
-          font-weight: 500;
+          font-weight: 600;
           cursor: pointer;
-          transition: background-color 0.2s ease;
+          transition: all 0.2s ease;
           text-align: left;
         }
 
         .dropdown-item:hover {
-          background: rgba(102, 126, 234, 0.1);
-          color: #667eea;
+          background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+          color: #047857;
         }
 
         .dropdown-item:not(:last-child) {

@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
-import { ShoppingCart, DollarSign, Calendar, Eye, EyeOff, Plus, Minus, WifiOff } from "lucide-react";
+import { ShoppingCart, DollarSign, Calendar, Eye, EyeOff, Plus, Minus, WifiOff, Download, X } from "lucide-react";
 import { useOfflineQueue } from "../../providers/OfflineProvider";
+import ImageUpload from "./ImageUpload";
 
 interface Product {
   _id: string;
@@ -19,6 +20,8 @@ interface ProductSale {
   totalSoldMoney: number;
   productId: string;
   createdAt: string;
+  by?: 'cash' | 'mobile banking(telebirr)';
+  paymentImageUrl?: string;
 }
 
 interface Withdrawal {
@@ -48,6 +51,9 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
   const [productSalesForm, setProductSalesForm] = useState<ProductSaleForm[]>([]);
   const [withdrawalReason, setWithdrawalReason] = useState('');
   const [withdrawalAmount, setWithdrawalAmount] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "mobile banking(telebirr)">("cash");
+  const [paymentImageUrl, setPaymentImageUrl] = useState('');
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   // Offline functionality
   const { isOffline, pendingCount, queueSale } = useOfflineQueue();
@@ -144,11 +150,23 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
             return;
           }
         }
+        
+        // Validate payment method for product sales
+        if (paymentMethod === "mobile banking(telebirr)" && !paymentImageUrl) {
+          alert("Payment proof image is required for Mobile Banking (Telebirr) payments.");
+          setLoading(false);
+          return;
+        }
       }
 
       // Prepare sale data
       const saleData = saleType === 'product_sale' 
-        ? { type: 'product_sale' as const, productSales: productSalesForm }
+        ? { 
+            type: 'product_sale' as const, 
+            productSales: productSalesForm,
+            by: paymentMethod,
+            paymentImageUrl: paymentImageUrl || undefined
+          }
         : { type: 'withdrawal' as const, reason: withdrawalReason, amount: withdrawalAmount };
 
       // If offline, queue the operation
@@ -161,6 +179,8 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
         setProductSalesForm([]);
         setWithdrawalReason('');
         setWithdrawalAmount(0);
+        setPaymentMethod('cash');
+        setPaymentImageUrl('');
         
         if (onSuccess) {
           onSuccess();
@@ -176,14 +196,22 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
 
       if (saleType === 'product_sale') {
         // Use separate product sales endpoint
-        console.log('🛒 Sending product sales data:', { productSales: productSalesForm });
+        console.log('🛒 Sending product sales data:', { 
+          productSales: productSalesForm,
+          by: paymentMethod,
+          paymentImageUrl: paymentImageUrl || undefined
+        });
         response = await fetch('/api/product-sales', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ productSales: productSalesForm })
+          body: JSON.stringify({ 
+            productSales: productSalesForm,
+            by: paymentMethod,
+            paymentImageUrl: paymentImageUrl || undefined
+          })
         });
       } else {
         // Use separate withdrawals endpoint
@@ -206,6 +234,8 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
         setProductSalesForm([]);
         setWithdrawalReason('');
         setWithdrawalAmount(0);
+        setPaymentMethod('cash');
+        setPaymentImageUrl('');
         if (showHistory) {
           fetchSalesData();
         }
@@ -247,6 +277,8 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
           setProductSalesForm([]);
           setWithdrawalReason('');
           setWithdrawalAmount(0);
+          setPaymentMethod('cash');
+          setPaymentImageUrl('');
           
           if (onSuccess) {
             onSuccess();
@@ -326,6 +358,15 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
     }).format(amount);
   };
 
+  const downloadPaymentProof = (imageUrl: string, productName: string) => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = `payment-proof-${productName}-${new Date().toISOString().split('T')[0]}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Combine and sort all sales data for display
   const allSalesData = [
     ...productSales.map(sale => ({
@@ -333,14 +374,18 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
       type: 'product_sale' as const,
       displayName: sale.productName,
       amount: sale.totalSoldMoney,
-      isRevenue: true
+      isRevenue: true,
+      paymentMethod: sale.by || 'cash',
+      paymentImageUrl: sale.paymentImageUrl
     })),
     ...withdrawals.map(withdrawal => ({
       ...withdrawal,
       type: 'withdrawal' as const,
       displayName: withdrawal.reason,
       amount: withdrawal.amount,
-      isRevenue: false
+      isRevenue: false,
+      paymentMethod: 'cash' as const,
+      paymentImageUrl: undefined
     }))
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -567,6 +612,75 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
                 </div>
               )}
 
+              {/* Payment Method Selection */}
+              {productSalesForm.length > 0 && (
+                <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl border border-purple-100 p-6 shadow-lg">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 bg-gradient-to-br from-purple-400 via-pink-400 to-orange-400 rounded-xl flex items-center justify-center shadow-md">
+                      <DollarSign className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <h5 className="text-lg font-bold text-purple-700">Payment Method</h5>
+                      <p className="text-sm text-purple-600">Choose how the customer paid</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <label className={`flex items-center space-x-3 cursor-pointer p-4 rounded-xl border-2 transition-all duration-300 hover:shadow-md ${
+                      paymentMethod === "cash"
+                        ? 'bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50 border-emerald-300 text-emerald-700 shadow-lg'
+                        : 'bg-white border-purple-200 text-purple-600 hover:border-emerald-300 hover:bg-emerald-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value="cash"
+                        checked={paymentMethod === "cash"}
+                        onChange={(e) => {
+                          setPaymentMethod(e.target.value as "cash" | "mobile banking(telebirr)");
+                          setPaymentImageUrl(""); // Clear image when switching to cash
+                        }}
+                        className="w-4 h-4 text-emerald-600 bg-gray-100 border-gray-300 focus:ring-emerald-500"
+                      />
+                      <span className="text-sm font-semibold">💵 Cash</span>
+                    </label>
+                    <label className={`flex items-center space-x-3 cursor-pointer p-4 rounded-xl border-2 transition-all duration-300 hover:shadow-md ${
+                      paymentMethod === "mobile banking(telebirr)"
+                        ? 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border-blue-300 text-blue-700 shadow-lg'
+                        : 'bg-white border-purple-200 text-purple-600 hover:border-blue-300 hover:bg-blue-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value="mobile banking(telebirr)"
+                        checked={paymentMethod === "mobile banking(telebirr)"}
+                        onChange={(e) => setPaymentMethod(e.target.value as "cash" | "mobile banking(telebirr)")}
+                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
+                      />
+                      <span className="text-sm font-semibold">📱 Mobile Banking (Telebirr)</span>
+                    </label>
+                  </div>
+
+                  {/* Image Upload for Mobile Banking */}
+                  {paymentMethod === "mobile banking(telebirr)" && (
+                    <div className="mt-4">
+                      <label className="block text-sm font-semibold text-blue-700 mb-3">
+                        Payment Proof (Required)
+                      </label>
+                      <p className="text-sm text-blue-600 mb-3">
+                        Please upload a screenshot or photo of your mobile banking payment confirmation
+                      </p>
+                      <ImageUpload
+                        onImageUpload={setPaymentImageUrl}
+                        onImageRemove={() => setPaymentImageUrl("")}
+                        currentImageUrl={paymentImageUrl}
+                        disabled={loading}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
               {productSalesForm.length > 0 && (
                 <div className="bg-gradient-to-r from-emerald-50 via-green-50 to-teal-50 p-6 rounded-2xl border border-emerald-200 shadow-lg">
                   <div className="flex items-center justify-between">
@@ -758,6 +872,15 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
                           }`}>
                             {item.type === 'product_sale' ? 'Product Sale' : 'Withdrawal'}
                           </span>
+                          {item.type === 'product_sale' && (
+                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                              item.paymentMethod === 'cash' 
+                                ? 'bg-emerald-100 text-emerald-700' 
+                                : 'bg-blue-100 text-blue-700'
+                            }`}>
+                              {item.paymentMethod === 'cash' ? '💵 Cash' : '📱 Mobile Banking'}
+                            </span>
+                          )}
                         </div>
                           <div className="text-sm font-medium text-gray-800 truncate">
                           {item.displayName}
@@ -779,8 +902,46 @@ export default function SalesManagement({ onSuccess, onDataChange }: SalesManage
                         <div className="text-xs text-gray-500 font-medium">
                           {item.isRevenue ? 'Revenue' : 'Withdrawal'}
                         </div>
+                        {/* Payment proof buttons for product sales with mobile banking */}
+                        {item.type === 'product_sale' && item.paymentMethod === 'mobile banking(telebirr)' && item.paymentImageUrl && (
+                          <div className="flex gap-1 mt-2">
+                            <button
+                              onClick={() => setPreviewImage(previewImage === item.paymentImageUrl ? null : (item.paymentImageUrl || null))}
+                              className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+                              title="View payment proof"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => downloadPaymentProof(item.paymentImageUrl!, item.displayName)}
+                              className="p-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded transition-colors"
+                              title="Download payment proof"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
+                    {/* Inline image preview for payment proof */}
+                    {previewImage === item.paymentImageUrl && item.paymentImageUrl && (
+                      <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-semibold text-gray-700">Payment Proof</span>
+                          <button
+                            onClick={() => setPreviewImage(null)}
+                            className="text-gray-500 hover:text-gray-700"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <img 
+                          src={item.paymentImageUrl} 
+                          alt="Payment proof" 
+                          className="w-full h-32 object-cover rounded-lg border"
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

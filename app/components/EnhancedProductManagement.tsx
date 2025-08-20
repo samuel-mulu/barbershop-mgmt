@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Package, Plus, Calendar, ChevronDown, ChevronUp, DollarSign, Hash, Tag, TrendingUp, Eye, EyeOff, WifiOff, Edit, Trash2 } from "lucide-react";
+import { Package, Plus, Calendar, ChevronDown, ChevronUp, DollarSign, Hash, Tag, TrendingUp, Eye, EyeOff, WifiOff, Edit, Trash2, Search } from "lucide-react";
 import { useOfflineQueue } from "../../providers/OfflineProvider";
+import EthiopianDate from "./EthiopianDate";
 
 
 interface Product {
@@ -19,15 +20,14 @@ interface ProductManagementProps {
   onDataChange?: (products: Product[]) => void;
 }
 
-interface GroupedProducts {
-  [date: string]: Product[];
-}
+
 
 export default function EnhancedProductManagement({ onSuccess, onDataChange }: ProductManagementProps) {
   const [showHistory, setShowHistory] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
-  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const [searchTerm, setSearchTerm] = useState("");
+
   const [formData, setFormData] = useState({
     name: "",
     quantity: 0,
@@ -208,20 +208,7 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
 
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -234,25 +221,7 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
     return formData.quantity * formData.pricePerUnit;
   };
 
-  // Group products by date
-  const groupedProducts: GroupedProducts = products.reduce((groups, product) => {
-    const date = formatDate(product.createdAt);
-    if (!groups[date]) {
-      groups[date] = [];
-    }
-    groups[date].push(product);
-    return groups;
-  }, {} as GroupedProducts);
 
-  const toggleDateExpansion = (date: string) => {
-    const newExpanded = new Set(expandedDates);
-    if (newExpanded.has(date)) {
-      newExpanded.delete(date);
-    } else {
-      newExpanded.add(date);
-    }
-    setExpandedDates(newExpanded);
-  };
 
   // Edit product function
   const handleEditProduct = (product: Product) => {
@@ -397,6 +366,11 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
     { value: "piece", label: "Piece", icon: "🔢" }
   ];
 
+  // Filter products based on search term
+  const filteredProducts = products.filter(product =>
+    product.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="enhanced-product-management">
 
@@ -501,12 +475,12 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
                 <Hash className="w-4 h-4" />
                 Quantity
               </label>
-                             <input
+                                                          <input
                  type="number"
-                 value={formData.quantity}
+                 value={formData.quantity || ''}
                  onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
                  className="field-input"
-                 placeholder="e.g., 50, 100, 25"
+                  placeholder="e.g., 50, 100, 25"
                  min="0"
                  required
                />
@@ -538,13 +512,13 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
                 <DollarSign className="w-4 h-4" />
                 Price Per Unit
               </label>
-                             <input
+                                                          <input
                  type="number"
                  step="0.01"
-                 value={formData.pricePerUnit}
+                 value={formData.pricePerUnit || ''}
                  onChange={(e) => setFormData({ ...formData, pricePerUnit: parseFloat(e.target.value) || 0 })}
                  className="field-input"
-                 placeholder="e.g., 15.99, 25.50, 10.00"
+                  placeholder="e.g., 15.99, 25.50, 10.00"
                  min="0"
                  required
                />
@@ -646,79 +620,116 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
         
         {showHistory && (
           <div className="history-content">
+            {/* Search Bar */}
+            <div className="search-container">
+              <div className="search-input-wrapper">
+                <Search className="search-icon" />
+                <input
+                  type="text"
+                  placeholder="Search products by name..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="search-input"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm("")}
+                    className="clear-search"
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+              {searchTerm && (
+                <div className="search-results-info">
+                  Showing {filteredProducts.length} of {products.length} products
+                </div>
+              )}
+            </div>
+
             {products.length === 0 ? (
               <div className="empty-state">
                 <Package className="w-16 h-16 text-slate-300" />
                 <h4>No Products Yet</h4>
                 <p>Start adding products to see them here</p>
               </div>
+            ) : filteredProducts.length === 0 ? (
+              <div className="empty-state">
+                <Search className="w-16 h-16 text-slate-300" />
+                <h4>No Products Found</h4>
+                <p>No products match your search "{searchTerm}"</p>
+              </div>
             ) : (
-              <div className="history-timeline">
-                {Object.entries(groupedProducts)
-                  .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-                  .map(([date, dateProducts]) => (
-                    <div key={date} className="timeline-group">
-                      <button
-                        onClick={() => toggleDateExpansion(date)}
-                        className="timeline-header"
-                      >
-                        <div className="timeline-date">
-                          <Calendar className="w-4 h-4" />
-                          <span>{date}</span>
-                          <span className="product-count">({dateProducts.length} products)</span>
-                        </div>
-                        {expandedDates.has(date) ? (
-                          <ChevronUp className="w-5 h-5" />
-                        ) : (
-                          <ChevronDown className="w-5 h-5" />
-                        )}
-                      </button>
-                      
-                      {expandedDates.has(date) && (
-                        <div className="timeline-content">
-                          {dateProducts.map((product) => (
-                            <div key={product._id} className="product-card">
-                              <div className="product-card-header">
-                                <div className="product-info">
-                                  <h4 className="product-name">{product.name}</h4>
-                                  <p className="product-time">{formatTime(product.createdAt)}</p>
-                                </div>
-                                <div className="product-actions">
-                                  <button
-                                    onClick={() => handleEditProduct(product)}
-                                    className="edit-button"
-                                    title="Edit Product"
-                                  >
-                                    <Edit className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteProduct(product)}
-                                    className="delete-button"
-                                    title="Delete Product"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                  <div className="product-value">
-                                    {formatCurrency(product.totalPrice)}
-                                  </div>
-                                </div>
-                              </div>
-                              <div className="product-details">
-                                <div className="detail-item">
-                                  <span className="detail-label">Quantity:</span>
-                                  <span className="detail-value">{product.quantity} {product.quantityType}</span>
-                                </div>
-                                <div className="detail-item">
-                                  <span className="detail-label">Unit Price:</span>
-                                  <span className="detail-value">{formatCurrency(product.pricePerUnit)}</span>
-                                </div>
-                              </div>
+              <div className="products-table-container">
+                <table className="products-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Product Name</th>
+                      <th>Quantity</th>
+                      <th>Type</th>
+                      <th>Unit Price</th>
+                      <th>Total Price</th>
+                      <th>Date Added</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProducts
+                      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                      .map((product, index) => (
+                        <tr key={product._id} className="product-row">
+                          <td className="row-number">{index + 1}</td>
+                                                     <td className="product-name-cell">
+                             <div className="product-name-info">
+                               <span className="product-name">{product.name}</span>
+                               <span className="product-time">
+                                 <EthiopianDate 
+                                   dateString={product.createdAt} 
+                                   showTime={true} 
+                                   showWeekday={false}
+                                 />
+                               </span>
+                             </div>
+                           </td>
+                          <td className="quantity-cell">{product.quantity}</td>
+                          <td className="type-cell">
+                            <span className="type-badge">{product.quantityType}</span>
+                          </td>
+                          <td className="price-cell">{formatCurrency(product.pricePerUnit)}</td>
+                          <td className="total-cell">
+                            <span className="total-price">{formatCurrency(product.totalPrice)}</span>
+                          </td>
+                          <td className="date-cell">
+                            <EthiopianDate 
+                              dateString={product.createdAt} 
+                              showTime={false} 
+                              showWeekday={false}
+                            />
+                          </td>
+                          <td className="actions-cell">
+                            <div className="product-actions">
+                              <button
+                                onClick={() => handleEditProduct(product)}
+                                className="edit-button"
+                                title="Edit Product"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteProduct(product)}
+                                className="delete-button"
+                                title="Delete Product"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -1026,6 +1037,84 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
           padding: 2rem;
         }
 
+        /* Search Styles */
+        .search-container {
+          margin-bottom: 2rem;
+        }
+
+        .search-input-wrapper {
+          position: relative;
+          max-width: 400px;
+        }
+
+        .search-icon {
+          position: absolute;
+          left: 1rem;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #9ca3af;
+          width: 20px;
+          height: 20px;
+          z-index: 1;
+        }
+
+        .search-input {
+          width: 100%;
+          padding: 1rem 1rem 1rem 3rem;
+          border: 2px solid #e2e8f0;
+          border-radius: 16px;
+          font-size: 1rem;
+          background: #ffffff;
+          transition: all 0.2s ease;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .search-input:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 
+            0 0 0 3px rgba(59, 130, 246, 0.1),
+            0 1px 3px rgba(0, 0, 0, 0.1);
+          transform: translateY(-1px);
+        }
+
+        .search-input::placeholder {
+          color: #9ca3af;
+        }
+
+        .clear-search {
+          position: absolute;
+          right: 1rem;
+          top: 50%;
+          transform: translateY(-50%);
+          background: #ef4444;
+          color: white;
+          border: none;
+          border-radius: 50%;
+          width: 24px;
+          height: 24px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: bold;
+          transition: all 0.2s ease;
+          z-index: 1;
+        }
+
+        .clear-search:hover {
+          background: #dc2626;
+          transform: translateY(-50%) scale(1.1);
+        }
+
+        .search-results-info {
+          margin-top: 0.75rem;
+          font-size: 0.875rem;
+          color: #64748b;
+          font-weight: 500;
+        }
+
         .empty-state {
           text-align: center;
           padding: 3rem 1rem;
@@ -1043,85 +1132,122 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
           font-size: 0.875rem;
         }
 
-        .history-timeline {
-          space-y: 1.5rem;
-        }
-
-        .timeline-group {
-          border: 1px solid #e2e8f0;
+        /* Products Table Styles */
+        .products-table-container {
+          overflow-x: auto;
           border-radius: 16px;
-          overflow: hidden;
-          margin-bottom: 1.5rem;
+          border: 1px solid #e2e8f0;
+          background: white;
         }
 
-        .timeline-header {
+        .products-table {
           width: 100%;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 1.25rem 1.5rem;
+          border-collapse: collapse;
+          font-size: 0.875rem;
+        }
+
+        .products-table th {
           background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-          border: none;
-          cursor: pointer;
-          transition: all 0.2s ease;
+          padding: 1rem;
           text-align: left;
-        }
-
-        .timeline-header:hover {
-          background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-        }
-
-        .timeline-date {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          color: #374151;
           font-weight: 600;
+          color: #374151;
+          border-bottom: 2px solid #e2e8f0;
+          font-size: 0.875rem;
         }
 
-        .product-count {
+        .products-table td {
+          padding: 1rem;
+          border-bottom: 1px solid #f1f5f9;
+          vertical-align: middle;
+        }
+
+        .products-table tr:hover {
+          background: #f8fafc;
+        }
+
+        .row-number {
+          font-weight: 600;
+          color: #64748b;
+          text-align: center;
+          width: 50px;
+        }
+
+        .product-name-cell {
+          min-width: 200px;
+        }
+
+        .product-name-info {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+        }
+
+        .product-name {
+          font-weight: 600;
+          color: #1e293b;
+        }
+
+        .product-time {
+          font-size: 0.75rem;
+          color: #64748b;
+        }
+
+        .quantity-cell {
+          text-align: center;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .type-cell {
+          text-align: center;
+        }
+
+        .type-badge {
           background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
           color: white;
           padding: 0.25rem 0.75rem;
           border-radius: 12px;
           font-size: 0.75rem;
           font-weight: 600;
+          text-transform: capitalize;
         }
 
-        .timeline-content {
-          padding: 1.5rem;
-          background: #ffffff;
-          border-top: 1px solid #e2e8f0;
-          space-y: 1rem;
+        .price-cell {
+          text-align: right;
+          font-weight: 600;
+          color: #374151;
         }
 
-        .product-card {
-          background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
-          border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          padding: 1.5rem;
-          transition: all 0.2s ease;
-          margin-bottom: 1rem;
+        .total-cell {
+          text-align: right;
         }
 
-        .product-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
-          border-color: #3b82f6;
+        .total-price {
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          color: white;
+          padding: 0.5rem 1rem;
+          border-radius: 12px;
+          font-weight: 700;
+          font-size: 0.875rem;
+          box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
         }
 
-        .product-card-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: flex-start;
-          margin-bottom: 1rem;
+        .date-cell {
+          color: #64748b;
+          font-size: 0.875rem;
+        }
+
+        .actions-cell {
+          text-align: center;
+          width: 120px;
         }
 
         .product-actions {
           display: flex;
           align-items: center;
-          gap: 0.75rem;
-          margin-left: auto;
+          gap: 0.5rem;
+          justify-content: center;
         }
 
         .edit-button {
@@ -1156,55 +1282,6 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
           box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
         }
 
-        .product-name {
-          font-size: 1.125rem;
-          font-weight: 700;
-          color: #1e293b;
-          margin: 0 0 0.25rem 0;
-        }
-
-        .product-time {
-          font-size: 0.75rem;
-          color: #64748b;
-          margin: 0;
-        }
-
-        .product-value {
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-          color: white;
-          padding: 0.5rem 1rem;
-          border-radius: 12px;
-          font-weight: 700;
-          font-size: 1.125rem;
-          box-shadow: 0 4px 8px rgba(16, 185, 129, 0.3);
-        }
-
-        .product-details {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-          gap: 1rem;
-        }
-
-        .detail-item {
-          display: flex;
-          flex-direction: column;
-          gap: 0.25rem;
-        }
-
-        .detail-label {
-          font-size: 0.75rem;
-          font-weight: 600;
-          color: #64748b;
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-
-        .detail-value {
-          font-size: 0.875rem;
-          font-weight: 600;
-          color: #374151;
-        }
-
         /* Mobile Responsive */
         @media (max-width: 768px) {
           .product-form-container,
@@ -1230,20 +1307,21 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
             align-items: flex-start;
           }
 
-          .timeline-header {
-            flex-direction: column;
-            gap: 0.75rem;
-            align-items: flex-start;
+          .products-table-container {
+            font-size: 0.75rem;
           }
 
-          .product-card-header {
-            flex-direction: column;
-            gap: 1rem;
-            align-items: flex-start;
+          .products-table th,
+          .products-table td {
+            padding: 0.75rem 0.5rem;
           }
 
-          .product-details {
-            grid-template-columns: 1fr;
+          .product-name-cell {
+            min-width: 150px;
+          }
+
+          .actions-cell {
+            width: 100px;
           }
         }
 
@@ -1255,6 +1333,14 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
 
           .history-content {
             padding: 1rem;
+          }
+
+          .search-container {
+            margin-bottom: 1.5rem;
+          }
+
+          .search-input-wrapper {
+            max-width: 100%;
           }
 
           .timeline-content {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import ImageUpload from "./ImageUpload";
 
 interface ServiceOperation {
   _id?: string;
@@ -11,6 +12,7 @@ interface ServiceOperation {
   workerId?: string;
   status?: string;
   by: "cash" | "mobile banking(telebirr)";
+  paymentImageUrl?: string;
   createdAt?: string;
 }
 
@@ -28,7 +30,7 @@ interface Worker {
 
 interface EditOperationFormProps {
   operation: ServiceOperation;
-  onUpdate: (data: Partial<ServiceOperation>) => void;
+  onUpdate: (data: Partial<ServiceOperation> & { originalOperation?: ServiceOperation }) => void;
   onCancel: () => void;
   updating: boolean;
 }
@@ -48,11 +50,29 @@ export default function EditOperationForm({
     by: operation.by || 'cash' as const
   });
 
+  // Payment image state - simple like admin dashboard
+  const [paymentImageUrl, setPaymentImageUrl] = useState(operation.paymentImageUrl || '');
+
   // Fetch data states
   const [services, setServices] = useState<Service[]>([]);
   const [barbers, setBarbers] = useState<Worker[]>([]);
   const [washers, setWashers] = useState<Worker[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Update form data when operation changes
+  useEffect(() => {
+    setFormData({
+      name: operation.name || '',
+      price: operation.price || 0,
+      workerName: operation.workerName || '',
+      workerRole: operation.workerRole || 'barber' as const,
+      workerId: operation.workerId || '',
+      by: operation.by || 'cash' as const
+    });
+    
+    // Update image URL - simple like admin dashboard
+    setPaymentImageUrl(operation.paymentImageUrl || '');
+  }, [operation]);
 
   // Fetch services and workers data
   useEffect(() => {
@@ -159,7 +179,19 @@ export default function EditOperationForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdate(formData);
+    
+    // Simple image handling like admin dashboard
+    const finalImageUrl = formData.by === 'mobile banking(telebirr)' ? paymentImageUrl || undefined : undefined;
+    
+    const updateData = {
+      ...formData,
+      paymentImageUrl: finalImageUrl,
+      originalOperation: operation // Include original operation for matching
+    };
+    
+
+    
+    onUpdate(updateData);
   };
 
   const handleInputChange = (field: keyof typeof formData, value: string | number) => {
@@ -313,13 +345,51 @@ export default function EditOperationForm({
             <select
               id="payment-method"
               value={formData.by}
-              onChange={(e) => handleInputChange('by', e.target.value as "cash" | "mobile banking(telebirr)")}
+              onChange={(e) => {
+                const newPaymentMethod = e.target.value as "cash" | "mobile banking(telebirr)";
+                handleInputChange('by', newPaymentMethod);
+                
+                // Clear image when switching to cash - simple like admin dashboard
+                if (newPaymentMethod === 'cash') {
+                  setPaymentImageUrl('');
+                }
+              }}
               className="form-select"
             >
               <option value="cash">💵 Cash</option>
               <option value="mobile banking(telebirr)">📱 Mobile Banking (Telebirr)</option>
             </select>
           </div>
+
+          {/* Image Upload for Mobile Banking */}
+          {formData.by === "mobile banking(telebirr)" && (
+            <div className="form-group">
+              <label className="form-label">Payment Proof (Required)</label>
+              <p className="text-sm text-gray-600 mb-3">
+                Please upload a screenshot or photo of your mobile banking payment confirmation
+              </p>
+              <ImageUpload
+                onImageUpload={setPaymentImageUrl}
+                onImageRemove={() => setPaymentImageUrl("")}
+                currentImageUrl={paymentImageUrl}
+                disabled={updating}
+              />
+              
+              {/* Image status indicator */}
+              {paymentImageUrl && (
+                <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-sm text-green-700 font-medium">
+                      ✅ Payment proof uploaded successfully
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+
+            </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex flex-col gap-3 pt-4">
@@ -333,7 +403,13 @@ export default function EditOperationForm({
             </button>
             <button
               type="submit"
-              disabled={updating || !formData.workerId || !formData.name || formData.price <= 0}
+              disabled={
+                updating || 
+                !formData.workerId || 
+                !formData.name || 
+                formData.price <= 0 ||
+                (formData.by === "mobile banking(telebirr)" && !paymentImageUrl)
+              }
               className="w-full px-4 py-3 text-white bg-gradient-to-r from-blue-500 to-blue-600 border-2 border-blue-500 rounded-xl hover:from-blue-600 hover:to-blue-700 hover:border-blue-600 transition-all duration-200 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
             >
               {updating ? '⏳ Updating...' : '✅ Update Operation'}

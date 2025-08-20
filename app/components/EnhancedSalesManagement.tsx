@@ -1,7 +1,17 @@
 "use client";
 import { useState, useEffect } from "react";
-import { ShoppingCart, DollarSign, Plus, Minus, Calendar, ChevronDown, ChevronUp, TrendingUp, Eye, EyeOff, WifiOff, CreditCard, Receipt, Package, Edit, Trash2, AlertTriangle, Hash, User } from "lucide-react";
+import { ShoppingCart, DollarSign, Plus, Minus, Calendar, ChevronDown, ChevronUp, TrendingUp, Eye, EyeOff, WifiOff, CreditCard, Receipt, Package, Edit, Trash2, AlertTriangle, Hash, User, Download, X } from "lucide-react";
 import { useOfflineQueue } from "../../providers/OfflineProvider";
+import ImageUpload from "./ImageUpload";
+import EthiopianDate from "./EthiopianDate";
+import { formatEthiopianDate } from "@/utils/ethiopianCalendar";
+import Pagination from "./Pagination";
+
+// Ethiopian calendar months for sorting
+const ETHIOPIAN_MONTHS = [
+  'Meskerem', 'Tikimt', 'Hidar', 'Tahsas', 'Tir', 'Yekatit',
+  'Megabit', 'Miyazya', 'Ginbot', 'Sene', 'Hamle', 'Nehasie'
+];
 
 
 interface Product {
@@ -20,7 +30,11 @@ interface ProductSale {
   soldQuantity: number;
   pricePerUnit: number;
   totalSoldMoney: number;
+  productId: string;
   createdAt: string;
+  by?: 'cash' | 'mobile banking(telebirr)';
+  paymentImageUrl?: string;
+  status?: 'pending' | 'finished';
 }
 
 interface Withdrawal {
@@ -35,19 +49,8 @@ interface SalesManagementProps {
   onDataChange?: (productSales: ProductSale[], withdrawals: Withdrawal[]) => void;
 }
 
-interface GroupedSales {
-  [date: string]: {
-    productSales: ProductSale[];
-    withdrawals: Withdrawal[];
-  };
-}
 
-interface CategoryExpansion {
-  [key: string]: {
-    productSales: boolean;
-    withdrawals: boolean;
-  };
-}
+
 
 export default function EnhancedSalesManagement({ onSuccess, onDataChange }: SalesManagementProps) {
   const [showHistory, setShowHistory] = useState(false);
@@ -55,9 +58,12 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
-  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
-  const [categoryExpansion, setCategoryExpansion] = useState<CategoryExpansion>({});
   const [saleType, setSaleType] = useState<'product_sale' | 'withdrawal'>('product_sale');
+  
+  // Filter states
+  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'product_sale' | 'withdrawal'>('product_sale');
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'cash' | 'mobile banking(telebirr)'>('all');
 
   // Edit Mode State
   const [isEditMode, setIsEditMode] = useState(false);
@@ -69,17 +75,17 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
     productName: string;
   } | null>(null);
 
-  // Delete Confirmation Dialog State
-  const [deleteDialog, setDeleteDialog] = useState<{
+  // Delete Modal State
+  const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean;
     record: ProductSale | Withdrawal | null;
-    recordType: 'product_sale' | 'withdrawal' | null;
   }>({
     isOpen: false,
-    record: null,
-    recordType: null
+    record: null
   });
   const [deleting, setDeleting] = useState(false);
+
+
 
   // Product Sale Form - Single product selection
   const [productSaleData, setProductSaleData] = useState({
@@ -87,7 +93,8 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
     productName: '',
     soldQuantity: 0,
     pricePerUnit: 0,
-    availableQuantity: 0
+    availableQuantity: 0,
+    status: 'pending' as 'pending' | 'finished'
   });
 
   // Withdrawal Form
@@ -96,8 +103,18 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
     amount: 0
   });
 
+  // Payment Method State
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "mobile banking(telebirr)">("cash");
+  const [paymentImageUrl, setPaymentImageUrl] = useState('');
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+
   // Offline functionality
   const { isOffline, pendingCount, queueSale } = useOfflineQueue();
+
+  // Polling for real-time updates
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+
+
 
   const fetchProducts = async () => {
     try {
@@ -108,7 +125,6 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
       
       if (response.ok) {
         const data = await response.json();
-        console.log('🛒 Fetched products:', data.products);
         setProducts(data.products || []);
       }
     } catch (error) {
@@ -121,7 +137,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
       const token = localStorage.getItem('token');
       
       const [productSalesResponse, withdrawalsResponse] = await Promise.all([
-        fetch('/api/product-sales', {
+        fetch('/api/product-sales?status=pending', {
           headers: { 'Authorization': `Bearer ${token}` }
         }),
         fetch('/api/withdrawals', {
@@ -132,6 +148,8 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
       if (productSalesResponse.ok && withdrawalsResponse.ok) {
         const productSalesData = await productSalesResponse.json();
         const withdrawalsData = await withdrawalsResponse.json();
+        
+
         
         setProductSales(productSalesData.productSales || []);
         setWithdrawals(withdrawalsData.withdrawals || []);
@@ -152,8 +170,30 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
   useEffect(() => {
     if (showHistory) {
       fetchSalesData();
+      
+      // Start polling every 5 seconds when history is shown
+      const interval = setInterval(() => {
+        fetchSalesData();
+      }, 5000);
+      
+      setPollingInterval(interval);
+      
+      // Cleanup polling when component unmounts or history is hidden
+      return () => {
+        if (interval) {
+          clearInterval(interval);
+        }
+      };
+    } else {
+      // Stop polling when history is hidden
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        setPollingInterval(null);
+      }
     }
   }, [showHistory]);
+
+
 
   // Handle rollback when component unmounts or user navigates away
   useEffect(() => {
@@ -188,20 +228,16 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
 
   const handleProductSelect = (productId: string) => {
     const selectedProduct = products.find(p => p._id === productId);
-    console.log('🛒 Selected product:', selectedProduct);
     if (selectedProduct) {
       const saleData = {
         productId: selectedProduct._id,
         productName: selectedProduct.name,
         soldQuantity: 0,
         pricePerUnit: selectedProduct.pricePerUnit,
-        availableQuantity: selectedProduct.quantity
+        availableQuantity: selectedProduct.quantity,
+        status: 'pending' as 'pending' | 'finished'
       };
-      console.log('🛒 Setting sale data:', saleData);
       setProductSaleData(saleData);
-    } else {
-      console.error('❌ Product not found for ID:', productId);
-      console.log('🛒 Available products:', products);
     }
   };
 
@@ -224,18 +260,25 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
            return;
          }
          
-         // For edit mode, calculate available quantity considering the original sale
-         let availableQuantity = productSaleData.availableQuantity;
+         // For edit mode, validate against the restored quantity
          if (isEditMode && originalSaleData) {
-           // Add back the original sold quantity since we're editing
-           availableQuantity += originalSaleData.soldQuantity;
-         }
-         
-         if (productSaleData.soldQuantity > availableQuantity) {
-           alert(`Insufficient quantity. Available: ${availableQuantity}, Requested: ${productSaleData.soldQuantity}`);
+           // The availableQuantity should already be correct after restoration
+           if (productSaleData.soldQuantity > productSaleData.availableQuantity) {
+             alert(`Insufficient quantity. Available: ${productSaleData.availableQuantity}, Requested: ${productSaleData.soldQuantity}`);
+             setLoading(false);
+             return;
+           }
+         } else {
+           // For new sales, validate against current product quantity
+           const currentProduct = products.find(p => p._id === productSaleData.productId);
+           if (currentProduct && productSaleData.soldQuantity > currentProduct.quantity) {
+             alert(`Insufficient quantity. Available: ${currentProduct.quantity}, Requested: ${productSaleData.soldQuantity}`);
            setLoading(false);
            return;
          }
+         }
+         
+
        } else {
          // Validate withdrawal data
          if (!withdrawalData.reason.trim() || withdrawalData.amount <= 0) {
@@ -253,13 +296,14 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
               productName: productSaleData.productName,
               soldQuantity: productSaleData.soldQuantity,
               pricePerUnit: productSaleData.pricePerUnit
-            }]
+            }],
+            by: paymentMethod,
+            paymentImageUrl: paymentImageUrl || undefined
           }
         : { type: saleType, reason: withdrawalData.reason, amount: withdrawalData.amount };
 
       // If offline, queue the operation
       if (isOffline) {
-        console.log('📱 [OFFLINE] Queueing sale operation:', saleData);
         await queueSale(saleData);
         
         // Reset form
@@ -269,8 +313,11 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
             productName: '',
             soldQuantity: 0,
             pricePerUnit: 0,
-            availableQuantity: 0
+            availableQuantity: 0,
+            status: 'pending'
           });
+          setPaymentMethod('cash');
+          setPaymentImageUrl('');
         } else {
           setWithdrawalData({ reason: '', amount: 0 });
         }
@@ -279,7 +326,6 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           onSuccess();
         }
         
-        console.log('✅ [OFFLINE] Sale queued successfully');
         return;
       }
 
@@ -288,53 +334,90 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
       
       if (saleType === 'product_sale') {
           if (isEditMode && editingRecordId) {
-            // Calculate quantity difference for product update
-            const quantityDifference = productSaleData.soldQuantity - (originalSaleData?.soldQuantity || 0);
+            // UPDATE: Subtract the NEW sold quantity from product
+            // Logic: Product quantity = Current quantity - New sold quantity
             
             // Update existing product sale
+            const updateData = {
+              productName: productSaleData.productName,
+              soldQuantity: productSaleData.soldQuantity,
+              pricePerUnit: productSaleData.pricePerUnit,
+              totalSoldMoney: productSaleData.soldQuantity * productSaleData.pricePerUnit,
+              quantityDifference: productSaleData.soldQuantity, // SUBTRACT (+) the new sold quantity
+              productId: productSaleData.productId,
+              by: paymentMethod,
+              paymentImageUrl: paymentImageUrl || undefined,
+              status: 'pending' // Always set to pending by default
+            };
+            
+            // Debug: Log the update data being sent
+            console.log('Sending update data:', updateData);
+            
             const saleResponse = await fetch(`/api/product-sales/${editingRecordId}`, {
               method: 'PUT',
               headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
               },
-              body: JSON.stringify({
-                productName: productSaleData.productName,
-                soldQuantity: productSaleData.soldQuantity,
-                pricePerUnit: productSaleData.pricePerUnit,
-                totalSoldMoney: productSaleData.soldQuantity * productSaleData.pricePerUnit,
-                quantityDifference: quantityDifference,
-                productId: productSaleData.productId
-              })
+              body: JSON.stringify(updateData)
             });
 
             if (!saleResponse.ok) {
-              throw new Error('Failed to update product sale');
+              const errorData = await saleResponse.json();
+              throw new Error(errorData.error || 'Failed to update product sale');
             }
+            
+            // Refresh products to show updated quantities after edit
+            await fetchProducts();
         } else {
-          // Create new product sale
-         const saleResponse = await fetch('/api/product-sales', {
+          // Create new product sale - Update quantity FIRST, then create sale
+          
+          // Step 1: Update product quantity FIRST
+          const quantityResponse = await fetch('/api/products/update-quantity', {
            method: 'POST',
            headers: {
              'Content-Type': 'application/json',
              'Authorization': `Bearer ${token}`
            },
            body: JSON.stringify({
-             productSales: [{
+              productUpdates: [{
                productId: productSaleData.productId,
-               productName: productSaleData.productName,
-               soldQuantity: productSaleData.soldQuantity,
-               pricePerUnit: productSaleData.pricePerUnit
+                quantitySold: productSaleData.soldQuantity
              }]
            })
          });
 
-        if (!saleResponse.ok) {
-          throw new Error('Failed to record product sale');
-        }
+          if (!quantityResponse.ok) {
+            const quantityError = await quantityResponse.json();
+            throw new Error(quantityError.error || 'Failed to update product quantity');
+          }
 
-          // Then, update product quantity (only for new sales)
-        const quantityResponse = await fetch('/api/products/update-quantity', {
+          // Step 2: Create the sale record
+          const requestBody = {
+            productSales: [{
+              productId: productSaleData.productId,
+              productName: productSaleData.productName,
+              soldQuantity: productSaleData.soldQuantity,
+              pricePerUnit: productSaleData.pricePerUnit,
+              status: 'pending' // Always set to pending by default
+            }],
+            by: paymentMethod,
+            paymentImageUrl: paymentImageUrl || undefined
+          };
+          
+          const saleResponse = await fetch('/api/product-sales', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(requestBody)
+          });
+
+          if (!saleResponse.ok) {
+            // If sale creation fails, we need to rollback the quantity update
+            console.error('🛒 Sale creation failed, rolling back quantity update');
+            const rollbackResponse = await fetch('/api/products/update-quantity', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -343,18 +426,20 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           body: JSON.stringify({
             productUpdates: [{
               productId: productSaleData.productId,
-              quantitySold: productSaleData.soldQuantity
+                  quantitySold: -productSaleData.soldQuantity // Negative to add back
             }]
           })
         });
 
-        if (!quantityResponse.ok) {
-          const quantityError = await quantityResponse.json();
-          throw new Error(quantityError.error || 'Failed to update product quantity');
+            if (!rollbackResponse.ok) {
+              console.error('🛒 Failed to rollback quantity update');
+        }
+            
+            throw new Error('Failed to record product sale');
         }
 
         // Refresh products to show updated quantities
-        fetchProducts();
+          await fetchProducts();
         }
       } else {
         // Handle withdrawal
@@ -410,8 +495,11 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           productName: '',
           soldQuantity: 0,
           pricePerUnit: 0,
-          availableQuantity: 0
+          availableQuantity: 0,
+          status: 'pending'
         });
+        setPaymentMethod('cash');
+        setPaymentImageUrl('');
       } else {
         setWithdrawalData({ reason: '', amount: 0 });
       }
@@ -439,13 +527,15 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                   productId: productSaleData.productId,
                   productName: productSaleData.productName,
                   soldQuantity: productSaleData.soldQuantity,
-                  pricePerUnit: productSaleData.pricePerUnit
-                }]
+                  pricePerUnit: productSaleData.pricePerUnit,
+                  status: 'pending' // Always set to pending by default
+                }],
+                by: paymentMethod,
+                paymentImageUrl: paymentImageUrl || undefined
               }
             : { type: saleType, reason: withdrawalData.reason, amount: withdrawalData.amount };
           
           await queueSale(saleData);
-          console.log('📱 [FALLBACK] Sale queued after online failure');
           
           // Reset form
           if (saleType === 'product_sale') {
@@ -454,8 +544,11 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
               productName: '',
               soldQuantity: 0,
               pricePerUnit: 0,
-              availableQuantity: 0
+              availableQuantity: 0,
+              status: 'pending'
             });
+            setPaymentMethod('cash');
+            setPaymentImageUrl('');
           } else {
             setWithdrawalData({ reason: '', amount: 0 });
           }
@@ -499,13 +592,34 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount) + ' ብር';
+  };
+
+  const downloadPaymentProof = (imageUrl: string, productName: string) => {
+    const link = document.createElement('a');
+    link.href = imageUrl;
+    link.download = `payment-proof-${productName}-${new Date().toISOString().split('T')[0]}.jpg`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const calculateTotal = () => {
     return productSaleData.soldQuantity * productSaleData.pricePerUnit;
+  };
+
+  // Helper function to get current product quantity
+  const getCurrentProductQuantity = (productId: string) => {
+    const product = products.find(p => p._id === productId);
+    return product?.quantity || 0;
+  };
+
+  // Helper function to calculate available quantity for editing
+  const calculateAvailableQuantityForEdit = (currentProductQuantity: number, originalSoldQuantity: number) => {
+    // When editing, the available quantity is current + original sold (since we restore it)
+    return currentProductQuantity + originalSoldQuantity;
   };
 
   // Edit Functions
@@ -520,27 +634,47 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
       // Find the product by name to get the productId
       const product = products.find(p => p.name === saleRecord.productName);
       
+      if (!product) {
+        alert('Product not found. Please refresh the page and try again.');
+        return;
+      }
+      
       // Store original sale data for quantity management
       setOriginalSaleData({ 
         soldQuantity: saleRecord.soldQuantity, 
-        productId: product?._id || '',
+        productId: product._id,
         productName: saleRecord.productName
       });
       
+      // Store the current product quantity before restoration
+      const currentProductQuantity = product.quantity;
+      
       setProductSaleData({
-        productId: product?._id || '',
+        productId: product._id,
         productName: saleRecord.productName,
         soldQuantity: saleRecord.soldQuantity,
         pricePerUnit: saleRecord.pricePerUnit,
-        availableQuantity: (product?.quantity || 0) + saleRecord.soldQuantity // Add back sold quantity
+        availableQuantity: currentProductQuantity + saleRecord.soldQuantity, // Available after restoration
+        status: saleRecord.status || 'pending'
       });
+      
+      // Correctly set payment method and image URL from the record
+      setPaymentMethod(saleRecord.by || 'cash');
+      setPaymentImageUrl(saleRecord.paymentImageUrl || '');
       setSaleType('product_sale');
       
-      // Restore the sold quantity to the product when editing starts
-      if (product?._id) {
+      // Debug: Log the payment data being set
+      console.log('Setting payment data for edit:', {
+        paymentMethod: saleRecord.by || 'cash',
+        paymentImageUrl: saleRecord.paymentImageUrl || '',
+        originalRecord: saleRecord
+      });
+      
+              // START EDIT: Add the original sold quantity back to product
+        // Logic: Product quantity = Current quantity + Original sold quantity
         try {
           const token = localStorage.getItem('token');
-          await fetch(`/api/products/update-quantity`, {
+          const restoreResponse = await fetch(`/api/products/update-quantity`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -549,16 +683,36 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
             body: JSON.stringify({
               productUpdates: [{
                 productId: product._id,
-                quantitySold: -saleRecord.soldQuantity // Negative to add back
+                quantitySold: -saleRecord.soldQuantity // ADD (+) the original sold quantity back
               }]
             })
           });
+
+        if (!restoreResponse.ok) {
+          throw new Error('Failed to restore product quantity');
+        }
           
           // Refresh products to show updated quantities
           await fetchProducts();
+        
+                 // Verify the restoration was successful
+         const updatedProducts = await fetch('/api/products', {
+           headers: { 'Authorization': `Bearer ${token}` }
+         }).then(res => res.json());
+         
+         const updatedProduct = updatedProducts.products.find((p: any) => p._id === product._id);
+         const expectedQuantity = currentProductQuantity + saleRecord.soldQuantity;
+         if (updatedProduct && updatedProduct.quantity !== expectedQuantity) {
+           alert('Warning: Quantity restoration may not have completed correctly. Please refresh and try again.');
+         }
+        
         } catch (error) {
           console.error('Error restoring product quantity for edit:', error);
-        }
+        alert('Failed to restore product quantity. Please try again.');
+        setIsEditMode(false);
+        setEditingRecordId(null);
+        setEditingRecordType(null);
+        return;
       }
     } else {
       const withdrawalRecord = record as Withdrawal;
@@ -571,11 +725,13 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
   };
 
   const cancelEdit = async () => {
-    // If we're editing a product sale, we need to rollback the quantity
+    // CANCEL: Subtract the ORIGINAL sold quantity from product
+    // Logic: When we started editing, we ADDED the original quantity back
+    // Now we need to SUBTRACT it to cancel the edit
     if (isEditMode && editingRecordType === 'product_sale' && originalSaleData?.productId) {
       try {
         const token = localStorage.getItem('token');
-        await fetch(`/api/products/update-quantity`, {
+        const rollbackResponse = await fetch(`/api/products/update-quantity`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -584,15 +740,21 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           body: JSON.stringify({
             productUpdates: [{
               productId: originalSaleData.productId,
-              quantitySold: originalSaleData.soldQuantity // Subtract again (rollback)
+              quantitySold: originalSaleData.soldQuantity // SUBTRACT (-) the original sold quantity
             }]
           })
         });
+
+        if (!rollbackResponse.ok) {
+          throw new Error('Failed to rollback product quantity');
+        }
         
         // Refresh products to show updated quantities
         await fetchProducts();
+        
       } catch (error) {
         console.error('Error rolling back product quantity:', error);
+        alert('Failed to cancel edit. Please refresh the page and try again.');
       }
     }
     
@@ -606,43 +768,44 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
       productName: '',
       soldQuantity: 0,
       pricePerUnit: 0,
-      availableQuantity: 0
+      availableQuantity: 0,
+      status: 'pending'
     });
     setWithdrawalData({
       reason: '',
       amount: 0
     });
+    setPaymentMethod('cash');
+    setPaymentImageUrl('');
     setOriginalSaleData(null);
   };
 
   // Delete Functions
-  const handleDeleteRecord = (record: ProductSale | Withdrawal, recordType: 'product_sale' | 'withdrawal') => {
-    setDeleteDialog({
+  const handleDeleteRecord = (record: ProductSale | Withdrawal) => {
+    setDeleteModal({
       isOpen: true,
-      record,
-      recordType
+      record
     });
   };
 
-  const closeDeleteDialog = () => {
-    setDeleteDialog({
+  const closeDeleteModal = () => {
+    setDeleteModal({
       isOpen: false,
-      record: null,
-      recordType: null
+      record: null
     });
   };
 
   const handleConfirmDelete = async () => {
-    if (!deleteDialog.record || !deleteDialog.recordType) return;
+    if (!deleteModal.record) return;
 
     setDeleting(true);
     try {
       const token = localStorage.getItem('token');
       
-      if (deleteDialog.recordType === 'product_sale') {
+      // Determine if it's a product sale or withdrawal based on the record structure
+      if ('productName' in deleteModal.record) {
         // Delete product sale
-        console.log('Deleting product sale with ID:', deleteDialog.record._id);
-        const response = await fetch(`/api/product-sales/${deleteDialog.record._id}`, {
+        const response = await fetch(`/api/product-sales/${deleteModal.record._id}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -650,13 +813,11 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
         });
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          console.error('Delete response error:', errorData);
-          throw new Error(errorData.error || `Failed to delete product sale (${response.status})`);
+          throw new Error('Failed to delete product sale');
         }
       } else {
         // Delete withdrawal
-        const response = await fetch(`/api/withdrawals/${deleteDialog.record._id}`, {
+        const response = await fetch(`/api/withdrawals/${deleteModal.record._id}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${token}`
@@ -664,69 +825,223 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
         });
 
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Failed to delete withdrawal (${response.status})`);
+          throw new Error('Failed to delete withdrawal');
         }
       }
 
       // Refresh data
-      await fetchSalesData();
-      await fetchProducts();
+      if (showHistory) {
+        fetchSalesData();
+      }
       
-      closeDeleteDialog();
+      closeDeleteModal();
       
       if (onSuccess) {
         onSuccess();
       }
     } catch (error) {
       console.error('Error deleting record:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to delete record';
-      alert(`Delete failed: ${errorMessage}`);
+      alert('Failed to delete record');
     } finally {
       setDeleting(false);
     }
   };
 
-  // Group sales by date
-  const groupedSales: GroupedSales = [...productSales, ...withdrawals]
-    .reduce((groups, item) => {
-      const date = formatDate(item.createdAt);
-      if (!groups[date]) {
-        groups[date] = { productSales: [], withdrawals: [] };
-      }
-      
-      if ('productName' in item) {
-        groups[date].productSales.push(item as ProductSale);
-      } else {
-        groups[date].withdrawals.push(item as Withdrawal);
-      }
-      
-      return groups;
-    }, {} as GroupedSales);
 
-  const toggleDateExpansion = (date: string) => {
-    const newExpanded = new Set(expandedDates);
-    if (newExpanded.has(date)) {
-      newExpanded.delete(date);
-    } else {
-      newExpanded.add(date);
-    }
-    setExpandedDates(newExpanded);
+  // Get available dates for filter
+  const getAvailableDates = () => {
+    const allDates = [...productSales, ...withdrawals]
+      .map(item => formatEthiopianDate(item.createdAt, false))
+      .filter((date, index, arr) => arr.indexOf(date) === index)
+      .sort((a, b) => {
+        // Sort by Ethiopian date (newest first)
+        const dateA = new Date(a.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(a.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + a.split(' ')[0].padStart(2, '0'));
+        const dateB = new Date(b.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(b.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + b.split(' ')[0].padStart(2, '0'));
+        return dateB.getTime() - dateA.getTime();
+      });
+    
+    return allDates;
   };
 
-  const toggleCategoryExpansion = (date: string, category: 'productSales' | 'withdrawals') => {
-    setCategoryExpansion(prev => ({
-      ...prev,
-      [date]: {
-        ...prev[date],
-        [category]: !prev[date]?.[category]
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Filter and sort data
+  const getFilteredData = () => {
+    let filteredData = [...productSales, ...withdrawals];
+    
+    // Filter by type
+    if (typeFilter !== 'all') {
+      if (typeFilter === 'product_sale') {
+        filteredData = filteredData.filter(item => 'productName' in item);
+      } else {
+        filteredData = filteredData.filter(item => !('productName' in item));
       }
-    }));
+    }
+    
+    // Filter by date
+    if (dateFilter !== 'all') {
+      filteredData = filteredData.filter(item => formatEthiopianDate(item.createdAt, false) === dateFilter);
+    }
+    
+    // Filter by payment method (only for product sales)
+    if (paymentFilter !== 'all') {
+      filteredData = filteredData.filter(item => {
+        if ('productName' in item) {
+          return item.by === paymentFilter;
+        }
+        return true; // Keep withdrawals when filtering by payment
+      });
+    }
+    
+    // Sort by newest first
+    return filteredData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  };
+
+  // Get paginated data
+  const getPaginatedData = () => {
+    const filteredData = getFilteredData();
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredData.slice(startIndex, endIndex);
+  };
+
+  // Calculate pagination info
+  const getPaginationInfo = () => {
+    const filteredData = getFilteredData();
+    const totalItems = filteredData.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const startItem = (currentPage - 1) * itemsPerPage + 1;
+    const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+    return {
+      totalItems,
+      totalPages,
+      startItem,
+      endItem,
+      currentPage
+    };
+  };
+
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  // Handle items per page change
+  const handleItemsPerPageChange = (limit: number) => {
+    setItemsPerPage(limit);
+    setCurrentPage(1); // Reset to first page when changing limit
+  };
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [typeFilter, dateFilter, paymentFilter]);
+
+  // Calculate total for filtered product sales
+  const getFilteredProductSalesTotal = () => {
+    const filteredData = getFilteredData();
+    const productSalesOnly = filteredData.filter(item => 'productName' in item) as ProductSale[];
+    return productSalesOnly.reduce((total, sale) => total + sale.totalSoldMoney, 0);
   };
 
   return (
     <div className="enhanced-sales-management">
 
+      {/* Delete Confirmation Modal */}
+      {deleteModal.isOpen && deleteModal.record && (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[99999] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border-0 w-full max-w-lg animate-slideIn" style={{ backgroundColor: '#ffffff' }}>
+            {/* Modal Header */}
+            <div className="px-8 py-6 border-b border-gray-100 bg-white rounded-t-2xl" style={{ backgroundColor: '#ffffff' }}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Confirm Deletion</h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Are you sure you want to delete this {deleteModal.record && 'productName' in deleteModal.record ? 'sale' : 'withdrawal'}?
+                  </p>
+                </div>
+                <button
+                  onClick={closeDeleteModal}
+                  className="w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors bg-white rounded-full border border-gray-200 flex items-center justify-center text-lg font-bold"
+                  style={{ backgroundColor: '#ffffff' }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            
+            {/* Modal Content */}
+            <div className="px-8 py-6 bg-white rounded-b-2xl" style={{ backgroundColor: '#ffffff' }}>
+              {/* Record Details */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6">
+                <div className="space-y-2">
+                  {deleteModal.record && 'productName' in deleteModal.record ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <Package className="w-4 h-4 text-gray-600" />
+                        <span className="font-medium text-gray-700">Product:</span>
+                        <span className="text-gray-900">{deleteModal.record.productName}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Hash className="w-4 h-4 text-gray-600" />
+                        <span className="font-medium text-gray-700">Quantity:</span>
+                        <span className="text-gray-900">{deleteModal.record.soldQuantity}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-gray-600" />
+                        <span className="font-medium text-gray-700">Total:</span>
+                        <span className="text-gray-900">${deleteModal.record.totalSoldMoney}</span>
+                      </div>
+                    </>
+                  ) : deleteModal.record && 'reason' in deleteModal.record ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="w-4 h-4 text-gray-600" />
+                        <span className="font-medium text-gray-700">Amount:</span>
+                        <span className="text-gray-900">${deleteModal.record.amount}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-gray-600" />
+                        <span className="font-medium text-gray-700">Reason:</span>
+                        <span className="text-gray-900">{deleteModal.record.reason}</span>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={closeDeleteModal}
+                  className="submit-button"
+                  style={{ background: '#e2e8f0', color: '#475569' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmDelete}
+                  disabled={deleting}
+                  className="submit-button"
+                  style={{ background: '#ef4444', color: 'white' }}
+                >
+                  {deleting ? (
+                    <div className="button-content">
+                      <div className="loading-spinner"></div>
+                      Deleting...
+                    </div>
+                  ) : (
+                    `Delete ${deleteModal.record && 'productName' in deleteModal.record ? 'Sale' : 'Withdrawal'}`
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modern Sales Form */}
       <div className="sales-form-container">
@@ -811,10 +1126,10 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                         <label className="field-label">Quantity to Sell</label>
                         <input
                           type="number"
-                          value={productSaleData.soldQuantity}
+                          value={productSaleData.soldQuantity || ''}
                           onChange={(e) => updateSoldQuantity(parseInt(e.target.value) || 0)}
                           className="field-input"
-                          placeholder="0"
+                          placeholder="e.g., 5, 10, 25"
                           min="0"
                           max={isEditMode && originalSaleData 
                             ? productSaleData.availableQuantity + originalSaleData.soldQuantity 
@@ -833,7 +1148,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                         <input
                           type="number"
                           step="0.01"
-                          value={productSaleData.pricePerUnit}
+                          value={productSaleData.pricePerUnit || ''}
                           className="field-input"
                           readOnly
                         />
@@ -850,6 +1165,8 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                   )}
                 </div>
 
+
+
                 {productSaleData.soldQuantity > 0 && productSaleData.pricePerUnit > 0 && (
                   <div className="total-preview">
                     <div className="total-preview-content">
@@ -859,6 +1176,70 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                         <p className="total-amount">{formatCurrency(calculateTotal())}</p>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Payment Method Selection */}
+                {productSaleData.soldQuantity > 0 && (
+                  <div className="payment-method-section">
+                    <h5 className="payment-method-title">
+                      <CreditCard className="w-4 h-4" />
+                      Payment Method
+                    </h5>
+                    <p className="payment-method-subtitle">Choose how the customer paid</p>
+                    
+                    <div className="payment-method-options">
+                      <label className={`payment-option ${paymentMethod === "cash" ? 'active' : ''}`}>
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="cash"
+                          checked={paymentMethod === "cash"}
+                          onChange={(e) => {
+                            setPaymentMethod(e.target.value as "cash" | "mobile banking(telebirr)");
+                            setPaymentImageUrl(""); // Clear image when switching to cash
+                          }}
+                          className="payment-radio"
+                        />
+                        <div className="payment-option-content">
+                          <div className="payment-icon cash-icon">💵</div>
+                          <span className="payment-label">Cash</span>
+                        </div>
+                      </label>
+                      
+                      <label className={`payment-option ${paymentMethod === "mobile banking(telebirr)" ? 'active' : ''}`}>
+                        <input
+                          type="radio"
+                          name="paymentMethod"
+                          value="mobile banking(telebirr)"
+                          checked={paymentMethod === "mobile banking(telebirr)"}
+                          onChange={(e) => setPaymentMethod(e.target.value as "cash" | "mobile banking(telebirr)")}
+                          className="payment-radio"
+                        />
+                        <div className="payment-option-content">
+                          <div className="payment-icon mobile-icon">📱</div>
+                          <span className="payment-label">Mobile Banking (Telebirr)</span>
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* Image Upload for Mobile Banking */}
+                    {paymentMethod === "mobile banking(telebirr)" && (
+                      <div className="image-upload-section">
+                        <label className="image-upload-label">
+                          Payment Proof (Required)
+                        </label>
+                        <p className="image-upload-hint">
+                          Please upload a screenshot or photo of your mobile banking payment confirmation
+                        </p>
+                        <ImageUpload
+                          onImageUpload={setPaymentImageUrl}
+                          onImageRemove={() => setPaymentImageUrl("")}
+                          currentImageUrl={paymentImageUrl}
+                          disabled={loading}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -892,10 +1273,10 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                   <input
                     type="number"
                     step="0.01"
-                    value={withdrawalData.amount}
+                    value={withdrawalData.amount || ''}
                     onChange={(e) => setWithdrawalData({ ...withdrawalData, amount: parseFloat(e.target.value) || 0 })}
                     className="field-input"
-                    placeholder="0.00"
+                    placeholder="e.g., 100.00, 250.50, 500.00"
                     min="0"
                     required
                   />
@@ -987,7 +1368,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
         <div className="history-header">
           <div className="history-header-content">
             <Calendar className="w-5 h-5" />
-            <h3 className="history-title">Sales History</h3>
+            <h3 className="history-title">Sales History (Pending Only)</h3>
           </div>
           <button
             onClick={() => setShowHistory(!showHistory)}
@@ -1009,266 +1390,253 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
         
         {showHistory && (
           <div className="history-content">
-            {Object.keys(groupedSales).length === 0 ? (
-              <div className="empty-state">
-                <ShoppingCart className="w-16 h-16 text-slate-300" />
-                <h4>No Sales Yet</h4>
-                <p>Start recording sales to see them here</p>
+            {/* Filter Controls */}
+            <div className="filter-controls">
+              <div className="filter-row">
+                <div className="filter-group">
+                  <label className="filter-label">Type:</label>
+                  <select
+                    value={typeFilter}
+                    onChange={(e) => setTypeFilter(e.target.value as 'all' | 'product_sale' | 'withdrawal')}
+                    className="filter-select"
+                  >
+                    <option value="product_sale">Product Sales</option>
+                    <option value="withdrawal">Withdrawals</option>
+                    <option value="all">All Types</option>
+                  </select>
               </div>
-            ) : (
-              <div className="history-timeline">
-                {Object.entries(groupedSales)
-                  .sort(([a], [b]) => new Date(b).getTime() - new Date(a).getTime())
-                  .map(([date, dateSales]) => {
-                    const totalItems = dateSales.productSales.length + dateSales.withdrawals.length;
-                    return (
-                      <div key={date} className="timeline-group">
-                        <button
-                          onClick={() => toggleDateExpansion(date)}
-                          className="timeline-header"
-                        >
-                          <div className="timeline-date">
-                            <Calendar className="w-4 h-4" />
-                            <span>{date}</span>
-                            <span className="transaction-count">({totalItems} transactions)</span>
+                <div className="filter-group">
+                  <label className="filter-label">Date:</label>
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className="filter-select"
+                  >
+                    <option value="all">All Dates</option>
+                    {getAvailableDates().map((date) => (
+                      <option key={date} value={date}>{date}</option>
+                    ))}
+                  </select>
                           </div>
-                          {expandedDates.has(date) ? (
-                            <ChevronUp className="w-5 h-5" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5" />
-                          )}
-                        </button>
-                        
-                                                 {expandedDates.has(date) && (
-                           <div className="timeline-content">
-                             {/* Product Sales Category */}
-                             {dateSales.productSales.length > 0 && (
-                               <div className="category-section">
-                                 <button
-                                   onClick={() => toggleCategoryExpansion(date, 'productSales')}
-                                   className="category-header"
-                                 >
-                                   <div className="category-info">
-                                     <ShoppingCart className="w-4 h-4" />
-                                     <span>Product Sales ({dateSales.productSales.length})</span>
+                <div className="filter-group">
+                  <label className="filter-label">Payment:</label>
+                  <select
+                    value={paymentFilter}
+                    onChange={(e) => setPaymentFilter(e.target.value as 'all' | 'cash' | 'mobile banking(telebirr)')}
+                    className="filter-select"
+                  >
+                    <option value="all">All Payments</option>
+                    <option value="cash">💵 Cash</option>
+                    <option value="mobile banking(telebirr)">📱 Mobile Banking</option>
+                  </select>
                                    </div>
-                                   {categoryExpansion[date]?.productSales ? (
-                                     <ChevronUp className="w-4 h-4" />
-                                   ) : (
-                                     <ChevronDown className="w-4 h-4" />
-                                   )}
-                                 </button>
-                                 
-                                 {categoryExpansion[date]?.productSales && (
-                                   <div className="category-items">
-                                     {dateSales.productSales.map((sale) => (
-                                       <div key={sale._id} className="sale-card product-sale">
-                                         <div className="sale-card-header">
-                                           <div className="sale-info">
-                                             <div className="sale-type-badge product">
-                                               <ShoppingCart className="w-3 h-3" />
-                                               Product Sale
-                                             </div>
-                                             <h4 className="sale-name">{sale.productName}</h4>
-                                             <p className="sale-time">{formatTime(sale.createdAt)}</p>
-                                           </div>
-                                           <div className="sale-actions">
-                                             <button
-                                               onClick={() => handleEditRecord(sale, 'product_sale')}
-                                               className="edit-button"
-                                               title="Edit Sale"
-                                             >
-                                               <Edit className="w-4 h-4" />
-                                             </button>
-                                             <button
-                                               onClick={() => handleDeleteRecord(sale, 'product_sale')}
-                                               className="delete-button"
-                                               title="Delete Sale"
-                                             >
-                                               <Trash2 className="w-4 h-4" />
-                                             </button>
-                                             <div className="sale-value">
-                                               {formatCurrency(sale.totalSoldMoney)}
-                                             </div>
-                                           </div>
-                                         </div>
-                                         <div className="sale-details">
-                                           <div className="detail-item">
-                                             <span className="detail-label">Quantity:</span>
-                                             <span className="detail-value">{sale.soldQuantity}</span>
-                                           </div>
-                                           <div className="detail-item">
-                                             <span className="detail-label">Unit Price:</span>
-                                             <span className="detail-value">{formatCurrency(sale.pricePerUnit)}</span>
-                                           </div>
-                                         </div>
-                                       </div>
-                                     ))}
-                                   </div>
-                                 )}
-                               </div>
-                             )}
-                             
-                             {/* Withdrawals Category */}
-                             {dateSales.withdrawals.length > 0 && (
-                               <div className="category-section">
-                                 <button
-                                   onClick={() => toggleCategoryExpansion(date, 'withdrawals')}
-                                   className="category-header"
-                                 >
-                                   <div className="category-info">
-                                     <Receipt className="w-4 h-4" />
-                                     <span>Withdrawals ({dateSales.withdrawals.length})</span>
-                                   </div>
-                                   {categoryExpansion[date]?.withdrawals ? (
-                                     <ChevronUp className="w-4 h-4" />
-                                   ) : (
-                                     <ChevronDown className="w-4 h-4" />
-                                   )}
-                                 </button>
-                                 
-                                 {categoryExpansion[date]?.withdrawals && (
-                                   <div className="category-items">
-                                     {dateSales.withdrawals.map((withdrawal) => (
-                                       <div key={withdrawal._id} className="sale-card withdrawal">
-                                         <div className="sale-card-header">
-                                           <div className="sale-info">
-                                             <div className="sale-type-badge withdrawal">
-                                               <Receipt className="w-3 h-3" />
-                                               Withdrawal
-                                             </div>
-                                             <h4 className="sale-name">{withdrawal.reason}</h4>
-                                             <p className="sale-time">{formatTime(withdrawal.createdAt)}</p>
-                                           </div>
-                                           <div className="sale-actions">
-                                             <button
-                                               onClick={() => handleEditRecord(withdrawal, 'withdrawal')}
-                                               className="edit-button"
-                                               title="Edit Withdrawal"
-                                             >
-                                               <Edit className="w-4 h-4" />
-                                             </button>
-                                             <button
-                                               onClick={() => handleDeleteRecord(withdrawal, 'withdrawal')}
-                                               className="delete-button"
-                                               title="Delete Withdrawal"
-                                             >
-                                               <Trash2 className="w-4 h-4" />
-                                             </button>
-                                             <div className="sale-value withdrawal">
-                                               -{formatCurrency(withdrawal.amount)}
-                                             </div>
-                                           </div>
-                                         </div>
-                                       </div>
-                                     ))}
-                                   </div>
-                                 )}
-                               </div>
-                             )}
-                           </div>
-                         )}
-                      </div>
-                    );
-                  })}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Delete Confirmation Modal */}
-      {deleteDialog.isOpen && deleteDialog.record && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[99999] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border-0 w-full max-w-lg animate-slideIn" style={{ backgroundColor: '#ffffff' }}>
-            {/* Modal Header */}
-            <div className="px-8 py-6 border-b border-gray-100 bg-white rounded-t-2xl" style={{ backgroundColor: '#ffffff' }}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900">Confirm Deletion</h3>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Are you sure you want to delete this {deleteDialog.recordType === 'product_sale' ? 'sale' : 'withdrawal'}?
-                  </p>
-                </div>
-                <button
-                  onClick={closeDeleteDialog}
-                  className="w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors bg-white rounded-full border border-gray-200 flex items-center justify-center text-lg font-bold"
-                  style={{ backgroundColor: '#ffffff' }}
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            
-            {/* Modal Content */}
-            <div className="px-8 py-6 bg-white rounded-b-2xl" style={{ backgroundColor: '#ffffff' }}>
-              {/* Record Details */}
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-6">
-                <div className="space-y-2">
-                  {deleteDialog.recordType === 'product_sale' && 'productName' in deleteDialog.record ? (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <Package className="w-4 h-4 text-gray-600" />
-                        <span className="font-medium text-gray-700">Product:</span>
-                        <span className="text-gray-900">{deleteDialog.record.productName}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Hash className="w-4 h-4 text-gray-600" />
-                        <span className="font-medium text-gray-700">Quantity:</span>
-                        <span className="text-gray-900">{deleteDialog.record.soldQuantity}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-gray-600" />
-                        <span className="font-medium text-gray-700">Total:</span>
-                        <span className="text-gray-900">${deleteDialog.record.totalSoldMoney}</span>
-                      </div>
-                    </>
-                  ) : deleteDialog.recordType === 'withdrawal' && 'reason' in deleteDialog.record ? (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <DollarSign className="w-4 h-4 text-gray-600" />
-                        <span className="font-medium text-gray-700">Amount:</span>
-                        <span className="text-gray-900">${deleteDialog.record.amount}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-gray-600" />
-                        <span className="font-medium text-gray-700">Reason:</span>
-                        <span className="text-gray-900">{deleteDialog.record.reason}</span>
-                      </div>
-                    </>
-                  ) : null}
-                </div>
               </div>
               
-              {/* Action Buttons */}
-              <div className="flex justify-end gap-2">
+              {/* Summary Card for Product Sales */}
+              {typeFilter === 'product_sale' && getFilteredData().filter(item => 'productName' in item).length > 0 && (
+                <div className="summary-card">
+                  <div className="summary-content">
+                    <ShoppingCart className="w-5 h-5 text-emerald-600" />
+                    <div>
+                      <p className="summary-label">ዘይተረከበ ብር</p>
+                      <p className="summary-amount">{formatCurrency(getFilteredProductSalesTotal())}</p>
+                                             </div>
+                                           </div>
+                                             </div>
+              )}
+                                           </div>
+
+            {getFilteredData().length === 0 ? (
+              <div className="empty-state">
+                <ShoppingCart className="w-16 h-16 text-slate-300" />
+                <h4>No Records Found</h4>
+                <p>No sales or withdrawals match your current filters</p>
+                                         </div>
+            ) : (
+              <>
+                <div className="sales-table-container">
+                  <table className="sales-table">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>Type</th>
+                        <th>Details</th>
+                        {typeFilter !== 'withdrawal' && <th>Payment Method</th>}
+                        <th>Status</th>
+                        <th>Amount</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getPaginatedData().map((record, index) => {
+                        const paginationInfo = getPaginationInfo();
+                        const rowNumber = paginationInfo.startItem + index;
+                        return (
+                          <tr key={record._id} className="sale-row">
+                            <td className="row-number">{rowNumber}</td>
+                        <td className="type-cell">
+                          {'productName' in record ? (
+                            <div className="type-badge product">
+                              <ShoppingCart className="w-3 h-3" />
+                              Product Sale
+                                           </div>
+                          ) : (
+                            <div className="type-badge withdrawal">
+                              <Receipt className="w-3 h-3" />
+                              Withdrawal
+                                           </div>
+                          )}
+                        </td>
+                        <td className="details-cell">
+                          {'productName' in record ? (
+                            <div className="product-details">
+                              <div className="product-name">{record.productName}</div>
+                              <div className="product-info">
+                                Qty: {record.soldQuantity} × {formatCurrency(record.pricePerUnit)}
+                                         </div>
+                                       </div>
+                          ) : (
+                            <div className="withdrawal-details">
+                              <div className="withdrawal-reason">{record.reason}</div>
+                                   </div>
+                                 )}
+                        </td>
+                        {typeFilter !== 'withdrawal' && (
+                          <td className="payment-cell">
+                            {'productName' in record && record.by ? (
+                              <div className={`payment-method-badge ${record.by === 'cash' ? 'cash' : 'mobile'}`}>
+                                {record.by === 'cash' ? '💵 Cash' : '📱 Mobile Banking'}
+                               </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </td>
+                        )}
+                        <td className="status-cell">
+                          {'productName' in record ? (
+                            record.status ? (
+                              <div className={`status-badge ${record.status === 'finished' ? 'finished' : 'pending'}`}>
+                                {record.status === 'finished' ? '✅ Finished' : '⏳ Pending'}
+                                   </div>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="amount-cell">
+                          {'productName' in record ? (
+                            <span className="amount-positive">{formatCurrency(record.totalSoldMoney)}</span>
+                          ) : (
+                            <span className="amount-negative">-{formatCurrency(record.amount)}</span>
+                          )}
+                        </td>
+                        <td className="date-cell">
+                          <div className="date-info">
+                            <div className="date-main">
+                              <EthiopianDate dateString={record.createdAt} showTime={false} />
+                                             </div>
+                            <div className="date-time">
+                              <EthiopianDate dateString={record.createdAt} showTime={true} showWeekday={false} />
+                                           </div>
+                          </div>
+                        </td>
+                        <td className="actions-cell">
+                                           <div className="sale-actions">
+                                             <button
+                              type="button"
+                              onClick={() => handleEditRecord(record, 'productName' in record ? 'product_sale' : 'withdrawal')}
+                                               className="edit-button"
+                              title="Edit"
+                                             >
+                                               <Edit className="w-4 h-4" />
+                                             </button>
+                                             <button
+                              type="button"
+                              onClick={() => handleDeleteRecord(record)}
+                                               className="delete-button"
+                              title="Delete"
+                                             >
+                                               <Trash2 className="w-4 h-4" />
+                                             </button>
+                            
+                            {/* Payment proof buttons for mobile banking */}
+                            {'productName' in record && record.by === 'mobile banking(telebirr)' && record.paymentImageUrl && (
+                              <div className="payment-proof-buttons">
                 <button
-                  onClick={closeDeleteDialog}
-                  className="submit-button"
-                  style={{ background: '#e2e8f0', color: '#475569' }}
-                >
-                  Cancel
+                                  type="button"
+                                  onClick={() => setPreviewImage(previewImage === record.paymentImageUrl ? null : (record.paymentImageUrl || null))}
+                                  className="view-button"
+                                  title="View payment proof"
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadPaymentProof(record.paymentImageUrl!, record.productName)}
+                                  className="download-button"
+                                  title="Download payment proof"
+                                >
+                                  <Download className="w-4 h-4" />
                 </button>
-                <button
-                  onClick={handleConfirmDelete}
-                  disabled={deleting}
-                  className="submit-button"
-                  style={{ background: '#ef4444', color: 'white' }}
-                >
-                  {deleting ? (
-                    <div className="button-content">
-                      <div className="loading-spinner"></div>
-                      Deleting...
+                                   </div>
+                                 )}
+                               </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  </tbody>
+                </table>
+                
+                {/* Payment proof preview modal */}
+                {previewImage && (
+                  <>
+                    <div className="payment-proof-backdrop" onClick={() => setPreviewImage(null)}></div>
+                    <div className="payment-proof-preview">
+                      <div className="preview-header">
+                        <span className="preview-title">Payment Proof</span>
+                        <button
+                          type="button"
+                          onClick={() => setPreviewImage(null)}
+                          className="close-preview"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <img 
+                        src={previewImage} 
+                        alt="Payment proof" 
+                        className="preview-image"
+                      />
                     </div>
-                  ) : (
-                    `Delete ${deleteDialog.recordType === 'product_sale' ? 'Sale' : 'Withdrawal'}`
-                  )}
-                </button>
+                  </>
+                )}
               </div>
-            </div>
-          </div>
+              
+              {/* Pagination Component */}
+              {getFilteredData().length > 0 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={getPaginationInfo().totalPages}
+                  totalItems={getPaginationInfo().totalItems}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={handlePageChange}
+                  onItemsPerPageChange={handleItemsPerPageChange}
+                  showItemsPerPage={true}
+                />
+              )}
+            </>
+          )}
         </div>
       )}
+      </div>
+
+
+
+
 
       <style jsx>{`
         .enhanced-sales-management {
@@ -1754,95 +2122,265 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           font-size: 0.875rem;
         }
 
-        .history-timeline {
-          space-y: 1.5rem;
-        }
-
-        .timeline-group {
+        /* Filter Controls */
+        .filter-controls {
+          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
           border: 1px solid #e2e8f0;
           border-radius: 16px;
-          overflow: hidden;
+          padding: 1.5rem;
           margin-bottom: 1.5rem;
         }
 
-        .timeline-header {
-          width: 100%;
+        .filter-row {
           display: flex;
-          justify-content: space-between;
+          gap: 1.5rem;
           align-items: center;
-          padding: 1.25rem 1.5rem;
-          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-          border: none;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          text-align: left;
         }
 
-        .timeline-header:hover {
-          background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+        .filter-group {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
         }
 
-        .timeline-date {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          color: #374151;
+        .filter-label {
+          font-size: 0.875rem;
           font-weight: 600;
+          color: #374151;
         }
 
-        .transaction-count {
+        .filter-select {
+          padding: 0.75rem 1rem;
+          border: 2px solid #e2e8f0;
+          border-radius: 12px;
+          background: white;
+          font-size: 0.875rem;
+          transition: all 0.2s ease;
+          min-width: 150px;
+        }
+
+        .filter-select:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        /* Summary Card */
+        .summary-card {
           background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          border-radius: 16px;
+          padding: 1.5rem;
+          margin-top: 1rem;
+          box-shadow: 0 8px 16px rgba(16, 185, 129, 0.3);
+        }
+
+        .summary-content {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
           color: white;
+        }
+
+        .summary-label {
+          font-size: 0.875rem;
+          font-weight: 500;
+          margin: 0;
+          opacity: 0.9;
+        }
+
+        .summary-amount {
+          font-size: 1.5rem;
+          font-weight: 700;
+          margin: 0;
+        }
+
+        /* Sales Table Styles */
+        .sales-table-container {
+          overflow-x: auto;
+          border-radius: 16px;
+          border: 1px solid #e2e8f0;
+          background: white;
+        }
+
+        .sales-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 0.875rem;
+        }
+
+        .sales-table th {
+          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+          padding: 1rem;
+          text-align: left;
+          font-weight: 600;
+          color: #374151;
+          border-bottom: 2px solid #e2e8f0;
+          font-size: 0.875rem;
+        }
+
+        .sales-table td {
+          padding: 1rem;
+          border-bottom: 1px solid #f1f5f9;
+          vertical-align: middle;
+        }
+
+        .sales-table tr:hover {
+          background: #f8fafc;
+        }
+
+        .row-number {
+          font-weight: 600;
+          color: #64748b;
+          text-align: center;
+          width: 50px;
+        }
+
+        .type-cell {
+          text-align: center;
+          width: 120px;
+        }
+
+        .type-badge {
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
           padding: 0.25rem 0.75rem;
           border-radius: 12px;
           font-size: 0.75rem;
           font-weight: 600;
+          justify-content: center;
         }
 
-                 .timeline-content {
-           padding: 1.5rem;
-           background: #ffffff;
-           border-top: 1px solid #e2e8f0;
-           space-y: 1rem;
-         }
+        .type-badge.product {
+          background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+          color: #15803d;
+        }
 
-         .category-section {
-           margin-bottom: 1.5rem;
-         }
+        .type-badge.withdrawal {
+          background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+          color: #a16207;
+        }
 
-         .category-header {
-           width: 100%;
+        .details-cell {
+          min-width: 200px;
+        }
+
+        .product-details {
            display: flex;
-           justify-content: space-between;
+          flex-direction: column;
+          gap: 0.25rem;
+        }
+
+        .product-name {
+          font-weight: 600;
+          color: #1e293b;
+        }
+
+        .product-info {
+          font-size: 0.75rem;
+          color: #64748b;
+        }
+
+        .withdrawal-details {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+        }
+
+        .withdrawal-reason {
+          font-weight: 600;
+          color: #1e293b;
+        }
+
+        .payment-cell {
+          text-align: center;
+          width: 120px;
+        }
+
+        .payment-method-badge {
+          display: inline-flex;
            align-items: center;
-           padding: 1rem 1.25rem;
-           background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-           border: 1px solid #e2e8f0;
+          gap: 0.25rem;
+          padding: 0.25rem 0.75rem;
            border-radius: 12px;
-           cursor: pointer;
-           transition: all 0.2s ease;
-           text-align: left;
-           margin-bottom: 0.75rem;
-         }
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
 
-         .category-header:hover {
-           background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
-           transform: translateY(-1px);
-           box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-         }
+        .payment-method-badge.cash {
+          background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+          color: #15803d;
+        }
 
-         .category-info {
-           display: flex;
+        .payment-method-badge.mobile {
+          background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+          color: #1d4ed8;
+        }
+
+        .status-cell {
+          text-align: center;
+          width: 100px;
+        }
+
+        .status-badge {
+          display: inline-flex;
            align-items: center;
-           gap: 0.75rem;
-           color: #374151;
+          gap: 0.25rem;
+          padding: 0.25rem 0.75rem;
+          border-radius: 12px;
+          font-size: 0.75rem;
            font-weight: 600;
+        }
+
+        .status-badge.pending {
+          background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+          color: #a16207;
+        }
+
+        .status-badge.finished {
+          background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+          color: #15803d;
+        }
+
+        .amount-cell {
+          text-align: right;
+          width: 120px;
+        }
+
+        .amount-positive {
+          font-weight: 700;
+          color: #059669;
+        }
+
+        .amount-negative {
+          font-weight: 700;
+          color: #dc2626;
+        }
+
+        .date-cell {
+          width: 150px;
+        }
+
+        .date-info {
+          display: flex;
+          flex-direction: column;
+          gap: 0.25rem;
+        }
+
+        .date-main {
+          font-weight: 600;
+          color: #374151;
            font-size: 0.875rem;
          }
 
-         .category-items {
-           padding-left: 0.5rem;
-           space-y: 0.75rem;
+        .date-time {
+          font-size: 0.75rem;
+          color: #64748b;
+        }
+
+        .actions-cell {
+          text-align: center;
+          width: 120px;
          }
 
         .sale-card {
@@ -1924,6 +2462,233 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
         }
 
+        /* Payment Method Styles */
+        .payment-method-section {
+          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+          border: 1px solid #e2e8f0;
+          border-radius: 16px;
+          padding: 1.5rem;
+          margin-top: 1.5rem;
+        }
+
+        .payment-method-title {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          font-size: 1.125rem;
+          font-weight: 700;
+          color: #1e293b;
+          margin: 0 0 0.5rem 0;
+        }
+
+        .payment-method-subtitle {
+          font-size: 0.875rem;
+          color: #64748b;
+          margin: 0 0 1rem 0;
+        }
+
+        .payment-method-options {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1rem;
+          margin-bottom: 1rem;
+        }
+
+        .payment-option {
+          display: flex;
+          align-items: center;
+          padding: 1rem;
+          border: 2px solid #e2e8f0;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          background: white;
+        }
+
+        .payment-option:hover {
+          border-color: #3b82f6;
+          transform: translateY(-1px);
+        }
+
+        .payment-option.active {
+          border-color: #3b82f6;
+          background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+          box-shadow: 0 4px 8px rgba(59, 130, 246, 0.2);
+        }
+
+        .payment-radio {
+          margin-right: 0.75rem;
+          width: 1rem;
+          height: 1rem;
+          accent-color: #3b82f6;
+        }
+
+        .payment-option-content {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+
+        .payment-icon {
+          font-size: 1.5rem;
+          width: 2rem;
+          height: 2rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
+        }
+
+        .cash-icon {
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          color: white;
+        }
+
+        .mobile-icon {
+          background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+          color: white;
+        }
+
+        .payment-label {
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .image-upload-section {
+          margin-top: 1rem;
+          padding-top: 1rem;
+          border-top: 1px solid #e2e8f0;
+        }
+
+        .image-upload-label {
+          display: block;
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #3b82f6;
+          margin-bottom: 0.5rem;
+        }
+
+        .image-upload-hint {
+          font-size: 0.75rem;
+          color: #64748b;
+          margin-bottom: 1rem;
+        }
+
+        .payment-method-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
+          padding: 0.25rem 0.75rem;
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          margin-bottom: 0.5rem;
+        }
+
+        .payment-method-badge.cash {
+          background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+          color: #15803d;
+        }
+
+        .payment-method-badge.mobile {
+          background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+          color: #1d4ed8;
+        }
+
+        .payment-proof-buttons {
+          display: flex;
+          gap: 0.5rem;
+        }
+
+        .view-button, .download-button {
+          background: white;
+          border: 1px solid #e2e8f0;
+          padding: 0.5rem;
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .view-button {
+          color: #3b82f6;
+        }
+
+        .view-button:hover {
+          background: #eff6ff;
+          border-color: #3b82f6;
+        }
+
+        .download-button {
+          color: #10b981;
+        }
+
+        .download-button:hover {
+          background: #f0fdf4;
+          border-color: #10b981;
+        }
+
+        .payment-proof-backdrop {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 9999;
+          cursor: pointer;
+        }
+
+        .payment-proof-preview {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: white;
+          border-radius: 16px;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+          z-index: 10000;
+          max-width: 90vw;
+          max-height: 90vh;
+          overflow: hidden;
+        }
+
+        .preview-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1rem 1.5rem;
+          border-bottom: 1px solid #e2e8f0;
+          background: #f8fafc;
+        }
+
+        .preview-title {
+          font-size: 1rem;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .close-preview {
+          background: none;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          padding: 0.25rem;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+        }
+
+        .close-preview:hover {
+          background: #e2e8f0;
+          color: #374151;
+        }
+
+        .preview-image {
+          max-width: 100%;
+          max-height: 70vh;
+          object-fit: contain;
+          display: block;
+        }
+
         .sale-details {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -1989,6 +2754,69 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
         }
 
+        /* Modal Animations */
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: scale(0.9) translateY(-20px);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+
+        .animate-slideIn {
+          animation: slideIn 0.3s ease-out;
+        }
+
+        /* Submit Button and Loading Spinner Styles */
+        .submit-button {
+          padding: 0.75rem 1.5rem;
+          border-radius: 12px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          border: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+        }
+
+        .submit-button:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .submit-button:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+          transform: none;
+        }
+
+        .button-content {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
+        }
+
+        .loading-spinner {
+          width: 16px;
+          height: 16px;
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-top: 2px solid white;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
         /* Mobile Responsive */
         @media (max-width: 768px) {
           .sales-form-container,
@@ -2020,20 +2848,31 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
             align-items: flex-start;
           }
 
-          .timeline-header {
-            flex-direction: column;
-            gap: 0.75rem;
-            align-items: flex-start;
-          }
-
-          .sale-card-header {
+          .filter-row {
             flex-direction: column;
             gap: 1rem;
             align-items: flex-start;
           }
 
-          .sale-details {
-            grid-template-columns: 1fr;
+          .filter-group {
+            width: 100%;
+          }
+
+          .sales-table-container {
+            font-size: 0.75rem;
+          }
+
+          .sales-table th,
+          .sales-table td {
+            padding: 0.75rem 0.5rem;
+          }
+
+          .details-cell {
+            min-width: 150px;
+          }
+
+          .actions-cell {
+            width: 100px;
           }
         }
 
@@ -2056,6 +2895,8 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
             padding: 1rem;
           }
         }
+
+
       `}</style>
     </div>
   );

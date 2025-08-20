@@ -19,7 +19,13 @@ export async function POST(request: NextRequest) {
     const updatePromises = productUpdates.map(async (update: { productId: string, quantitySold: number }) => {
       const { productId, quantitySold } = update;
       
-      if (!productId || quantitySold <= 0) {
+      console.log(`🛒 [UPDATE-QUANTITY] Processing update for product ${productId}:`, {
+        quantitySold,
+        isPositive: quantitySold > 0,
+        isNegative: quantitySold < 0
+      });
+      
+      if (!productId) {
         throw new Error("Invalid product update data");
       }
 
@@ -29,14 +35,37 @@ export async function POST(request: NextRequest) {
         throw new Error(`Product not found: ${productId}`);
       }
 
-      // Check if enough quantity available
-      if (product.quantity < quantitySold) {
+      console.log(`🛒 [UPDATE-QUANTITY] Found product:`, {
+        name: product.name,
+        currentQuantity: product.quantity,
+        quantitySold,
+        operation: quantitySold > 0 ? 'SALE' : 'ROLLBACK'
+      });
+
+      // Calculate new quantity (quantitySold can be negative for rollbacks)
+      const newQuantity = Math.max(0, product.quantity - quantitySold);
+      
+      console.log(`🛒 [UPDATE-QUANTITY] Quantity calculation:`, {
+        currentQuantity: product.quantity,
+        quantitySold,
+        newQuantity,
+        operation: quantitySold > 0 ? 'SUBTRACT' : 'ADD_BACK'
+      });
+      
+      // For positive quantitySold (sales), check if enough quantity available
+      if (quantitySold > 0 && product.quantity < quantitySold) {
         throw new Error(`Insufficient quantity for product ${product.name}. Available: ${product.quantity}, Requested: ${quantitySold}`);
       }
 
       // Update product quantity
-      const newQuantity = product.quantity - quantitySold;
-      return await DatabaseService.updateProductQuantity(productId, newQuantity);
+      const result = await DatabaseService.updateProductQuantity(productId, newQuantity);
+      console.log(`🛒 [UPDATE-QUANTITY] Update completed for ${product.name}:`, {
+        oldQuantity: product.quantity,
+        newQuantity,
+        success: !!result
+      });
+      
+      return result;
     });
 
     await Promise.all(updatePromises);

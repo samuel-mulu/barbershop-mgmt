@@ -12,7 +12,12 @@ export async function GET(request: NextRequest) {
     }
 
     const adminId = decoded._id;
-    const productSales = await DatabaseService.getProductSales(adminId);
+    
+    // Get status filter from query parameters
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status');
+    
+    const productSales = await DatabaseService.getProductSales(adminId, status || undefined);
 
     return NextResponse.json({
       success: true,
@@ -41,7 +46,10 @@ export async function POST(request: NextRequest) {
     const adminId = decoded._id;
     const body = await request.json();
     console.log('🛒 Received request body:', body);
-    const { productSales } = body;
+    console.log('🛒 Payment method:', body.by);
+    console.log('🛒 Payment image URL:', body.paymentImageUrl);
+    console.log('🛒 Product sales array:', body.productSales);
+    const { productSales, by, paymentImageUrl } = body;
 
     if (!productSales || !Array.isArray(productSales) || productSales.length === 0) {
       return NextResponse.json(
@@ -53,9 +61,10 @@ export async function POST(request: NextRequest) {
     // Handle product sale - create individual product sale records
     const createdSales = [];
     for (const productSale of productSales) {
-      const { productId, soldQuantity } = productSale;
+      const { productId, soldQuantity, status } = productSale;
       
       console.log('🛒 Processing product sale:', productSale);
+      console.log('🛒 Status from request:', status);
 
       // Get product details - use global search since product might belong to any admin
       const product = await DatabaseService.findProductById(productId);
@@ -76,19 +85,27 @@ export async function POST(request: NextRequest) {
       }
 
       // Create individual product sale record
-      const newProductSale = await DatabaseService.createProductSale(adminId, {
+      const saleData = {
         productName: product.name,
         soldQuantity,
         pricePerUnit: product.pricePerUnit,
         totalSoldMoney: soldQuantity * product.pricePerUnit,
-        productId
-      });
+        productId,
+        by: by || 'cash',
+        paymentImageUrl: paymentImageUrl || undefined,
+        status: productSale.status || 'pending'
+      };
+      
+      console.log('🛒 Creating sale with status:', saleData.status);
+      
+      console.log('🛒 Creating product sale with data:', saleData);
+      const newProductSale = await DatabaseService.createProductSale(adminId, saleData);
+      console.log('🛒 Created product sale:', newProductSale);
 
       createdSales.push(newProductSale);
 
-      // Update product quantity - ensure it doesn't go below 0
-      const newQuantity = Math.max(0, product.quantity - soldQuantity);
-      await DatabaseService.updateProductQuantity(productId, newQuantity);
+      // Note: Product quantity is updated separately via /api/products/update-quantity
+      // to avoid double subtraction
     }
 
     return NextResponse.json({

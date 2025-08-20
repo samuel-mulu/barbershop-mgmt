@@ -12,7 +12,8 @@ import {
   ArrowLeft,
   CheckCircle,
   Shield,
-  ChevronDown
+  ChevronDown,
+  UserPlus
 } from "lucide-react";
 
 export default function RegisterPage() {
@@ -197,6 +198,28 @@ export default function RegisterPage() {
         </div>
 
         <div className="heading">Create Account</div>
+
+        {/* Register Button */}
+        <div className="register-button-container">
+          <button
+            type="button"
+            onClick={handleRegister}
+            disabled={loading || !canRegister}
+            className="register-button"
+          >
+            {loading ? (
+              <div className="flex items-center justify-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Creating Account...
+              </div>
+            ) : (
+              <>
+                <UserPlus className="w-4 h-4 mr-2" />
+                Register Now
+              </>
+            )}
+          </button>
+        </div>
 
         {/* Progress Steps */}
         <div className="progress-steps">
@@ -505,6 +528,43 @@ export default function RegisterPage() {
           font-weight: 900;
           font-size: 30px;
           color: rgb(16, 137, 211);
+        }
+
+        .register-button-container {
+          text-align: center;
+          margin: 20px 0;
+        }
+
+        .register-button {
+          background: linear-gradient(45deg, rgb(34, 197, 94) 0%, rgb(16, 185, 129) 100%);
+          color: white;
+          border: none;
+          padding: 15px 30px;
+          border-radius: 25px;
+          font-weight: 700;
+          font-size: 16px;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: rgba(34, 197, 94, 0.3) 0px 10px 20px -5px;
+          min-width: 200px;
+        }
+
+        .register-button:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: rgba(34, 197, 94, 0.4) 0px 15px 25px -5px;
+        }
+
+        .register-button:active:not(:disabled) {
+          transform: translateY(0);
+        }
+
+        .register-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none;
         }
 
         .progress-steps {

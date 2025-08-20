@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Eye, EyeOff, Smartphone, Lock, Scissors } from "lucide-react";
+import { Eye, EyeOff, Scissors } from "lucide-react";
 
 export default function LoginPage() {
   const [phone, setPhone] = useState("");
@@ -47,8 +47,6 @@ export default function LoginPage() {
     }
   };
 
-
-
   // Don't render until mounted to prevent hydration mismatch
   if (!mounted) {
     return (
@@ -59,7 +57,7 @@ export default function LoginPage() {
               <Scissors className="w-6 h-6 text-white" />
             </div>
             <h1 className="text-lg font-bold text-slate-800 mb-1">
-              Barbershop Pro
+              ፈታ
             </h1>
             <p className="text-slate-600 text-xs">
               Professional Management System
@@ -67,44 +65,9 @@ export default function LoginPage() {
           </div>
           <div className="heading">Sign In</div>
           <div className="form">
-            <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                <Smartphone className="w-4 h-4" />
-              </div>
-              <input
-                required
-                className="input pl-12"
-                type="tel"
-                name="phone"
-                id="phone"
-                placeholder="Phone Number"
-                autoComplete="tel"
-                inputMode="tel"
-                disabled
-              />
-            </div>
-            <div className="relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                <Lock className="w-4 h-4" />
-              </div>
-              <input
-                required
-                className="input pl-12 pr-12"
-                type="password"
-                name="password"
-                id="password"
-                placeholder="Password"
-                autoComplete="current-password"
-                disabled
-              />
-            </div>
-            <button
-              className="login-button"
-              type="submit"
-              disabled
-            >
-              Sign In
-            </button>
+            <div className="input-skeleton"></div>
+            <div className="input-skeleton"></div>
+            <div className="button-skeleton"></div>
           </div>
         </div>
       </div>
@@ -117,48 +80,48 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-12 h-12 bg-gradient-to-br from-violet-500 to-purple-600 rounded-xl shadow-lg mb-3">
-            <Scissors className="w-6 h-6 text-white" />
-          </div>
+            </div>
           <h1 className="text-lg font-bold text-slate-800 mb-1">
-            Barbershop Pro
+          <Scissors className="w-6 h-6 text-white" />
+          ፈታ
           </h1>
-          <p className="text-slate-600 text-xs">
-            Professional Management System
-          </p>
+          <h1 className="text-lg font-bold text-slate-800 mb-1">
+            barber pro
+          </h1>
+          
         </div>
 
-        <div className="heading">Sign In</div>
         
-        <form className="form" onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
+        <form key={mounted ? 'mounted' : 'loading'} className="form" onSubmit={(e) => { e.preventDefault(); handleLogin(); }}>
           {/* Phone Input */}
-          <div className="relative">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <Smartphone className="w-4 h-4" />
-            </div>
-            <input
-              required
-              className="input pl-12"
-              type="tel"
-              name="phone"
-              id="phone"
-              placeholder="Phone Number"
-              value={phone}
-              onChange={e => setPhone(e.target.value)}
-              autoComplete="tel"
-              inputMode="tel"
-              suppressHydrationWarning
-            />
-          </div>
+          <input
+            required
+            className="input"
+            type="tel"
+            name="phone"
+            id="phone"
+            placeholder="Phone Number"
+            value={phone}
+            onChange={e => setPhone(e.target.value)}
+            autoComplete="tel"
+            inputMode="tel"
+            suppressHydrationWarning
+          />
 
           {/* Password Input */}
           <div className="relative">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-              <Lock className="w-4 h-4" />
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors z-10"
+              suppressHydrationWarning
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
             <input
               required
-              className="input pl-12 pr-12"
               type={showPassword ? "text" : "password"}
+              className="input pl-12"
               name="password"
               id="password"
               placeholder="Password"
@@ -167,14 +130,6 @@ export default function LoginPage() {
               autoComplete="current-password"
               suppressHydrationWarning
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
-              suppressHydrationWarning
-            >
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
           </div>
 
           <span className="forgot-password">
@@ -197,14 +152,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="social-account-container">
-          <span className="title">Or</span>
-          <div className="social-accounts">
-            <a href="/register" className="social-button register">
-              <span className="text-white text-xs font-medium">Register</span>
-            </a>
-          </div>
-        </div>
+
 
         <span className="agreement">
           <a href="#">Learn user licence agreement</a>
@@ -302,47 +250,7 @@ export default function LoginPage() {
           transform: none;
         }
 
-        .social-account-container {
-          margin-top: 25px;
-        }
 
-        .social-account-container .title {
-          display: block;
-          text-align: center;
-          font-size: 10px;
-          color: rgb(170, 170, 170);
-        }
-
-        .social-account-container .social-accounts {
-          width: 100%;
-          display: flex;
-          justify-content: center;
-          gap: 15px;
-          margin-top: 5px;
-        }
-
-        .social-account-container .social-accounts .social-button {
-          background: linear-gradient(45deg, rgb(0, 0, 0) 0%, rgb(112, 112, 112) 100%);
-          border: 5px solid white;
-          padding: 5px 15px;
-          border-radius: 25px;
-          min-width: 80px;
-          height: 40px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 12px 10px -8px;
-          transition: all 0.2s ease-in-out;
-          text-decoration: none;
-        }
-
-        .social-account-container .social-accounts .social-button:hover {
-          transform: scale(1.1);
-        }
-
-        .social-account-container .social-accounts .social-button:active {
-          transform: scale(0.9);
-        }
 
         .agreement {
           display: block;
@@ -354,6 +262,33 @@ export default function LoginPage() {
           text-decoration: none;
           color: #0099ff;
           font-size: 9px;
+        }
+
+        .input-skeleton {
+          width: 100%;
+          height: 50px;
+          background: #f1f5f9;
+          border-radius: 20px;
+          margin-top: 15px;
+          animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .button-skeleton {
+          width: 100%;
+          height: 50px;
+          background: #e2e8f0;
+          border-radius: 20px;
+          margin: 20px auto;
+          animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
         }
       `}</style>
     </div>

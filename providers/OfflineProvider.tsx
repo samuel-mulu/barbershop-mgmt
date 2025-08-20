@@ -4,6 +4,7 @@ import { useConnectionStatus } from '../hooks/useConnectionStatus';
 import { syncOperations } from '../utils/offlineQueue';
 import queueOperations from '../utils/offlineQueue';
 import { localforageUtils, queueOperations as baseQueueOps } from '../utils/localforageClient';
+import { WifiOff, Wifi, RefreshCw, AlertTriangle, CheckCircle, X } from 'lucide-react';
 
 // Offline Provider Context
 // Manages sync operations and provides offline state to components
@@ -41,6 +42,427 @@ export interface OfflineProviderProps {
   autoSync?: boolean; // Auto sync when coming online, default true
   syncOnMount?: boolean; // Sync pending operations on mount, default true
   enableLogging?: boolean; // Enable console logging, default true
+}
+
+// Offline Status Display Component
+export function OfflineStatusDisplay() {
+  const { 
+    isOnline, 
+    isOffline, 
+    pendingCount, 
+    failedCount, 
+    isSyncing, 
+    forceSync,
+    getQueueStatus
+  } = useOffline();
+
+  const [showFailedDetails, setShowFailedDetails] = useState(false);
+  const [failedOperations, setFailedOperations] = useState<any[]>([]);
+
+  const handleSync = async () => {
+    if (isOnline && !isSyncing) {
+      await forceSync();
+    }
+  };
+
+  const handleViewFailed = async () => {
+    if (failedCount > 0) {
+      try {
+        const status = await getQueueStatus();
+        const failed = status.operations?.filter((op: any) => op.status === 'failed') || [];
+        setFailedOperations(failed);
+        setShowFailedDetails(true);
+      } catch (error) {
+        console.error('Failed to get failed operations:', error);
+      }
+    }
+  };
+
+  return (
+    <>
+      <div className="offline-status-display">
+        <div className="status-indicators">
+          {/* Connection Status */}
+          <div className={`status-item ${isOnline ? 'online' : 'offline'}`}>
+            {isOnline ? (
+              <Wifi className="w-4 h-4 text-green-500" />
+            ) : (
+              <WifiOff className="w-4 h-4 text-red-500" />
+            )}
+            <span className="status-text">
+              {isOnline ? 'Online' : 'Offline'}
+            </span>
+          </div>
+
+          {/* Pending Operations */}
+          {pendingCount > 0 && (
+            <div className="status-item pending">
+              <RefreshCw className={`w-4 h-4 text-orange-500 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span className="status-text">
+                {pendingCount} operations waiting to upload
+              </span>
+            </div>
+          )}
+
+          {/* Failed Operations */}
+          {failedCount > 0 && (
+            <button
+              onClick={handleViewFailed}
+              className="status-item failed clickable"
+            >
+              <AlertTriangle className="w-4 h-4 text-red-500" />
+              <span className="status-text">
+                {failedCount} failed
+              </span>
+            </button>
+          )}
+
+          {/* Sync Button */}
+          {pendingCount > 0 && isOnline && (
+            <button
+              onClick={handleSync}
+              disabled={isSyncing}
+              className="sync-button"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>Sync</span>
+            </button>
+          )}
+
+          {/* Success Indicator */}
+          {pendingCount === 0 && failedCount === 0 && isOnline && (
+            <div className="status-item success">
+              <CheckCircle className="w-4 h-4 text-green-500" />
+              <span className="status-text">All synced</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Failed Operations Modal */}
+      {showFailedDetails && (
+        <div className="failed-operations-modal">
+          <div className="modal-overlay" onClick={() => setShowFailedDetails(false)} />
+          <div className="modal-content">
+            <div className="modal-header">
+              <h3 className="modal-title">Failed Operations ({failedCount})</h3>
+              <button
+                onClick={() => setShowFailedDetails(false)}
+                className="close-button"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="modal-body">
+              {failedOperations.length === 0 ? (
+                <p className="no-failed">No failed operations found.</p>
+              ) : (
+                <div className="failed-list">
+                  {failedOperations.map((operation, index) => (
+                    <div key={index} className="failed-item">
+                      <div className="failed-header">
+                        <span className="operation-type">{operation.type || 'Unknown'}</span>
+                        <span className="failed-time">
+                          {new Date(operation.timestamp).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="failed-details">
+                        <p className="error-message">{operation.error || 'Unknown error'}</p>
+                        <div className="operation-data">
+                          <strong>Data:</strong>
+                          <pre>{JSON.stringify(operation.data, null, 2)}</pre>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button
+                onClick={() => setShowFailedDetails(false)}
+                className="close-modal-button"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        .offline-status-display {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          font-size: 0.875rem;
+        }
+
+        .status-indicators {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+
+        .status-item {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.25rem 0.5rem;
+          border-radius: 6px;
+          font-size: 0.75rem;
+          font-weight: 500;
+          border: none;
+          background: none;
+          cursor: default;
+        }
+
+        .status-item.clickable {
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .status-item.clickable:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .status-item.online {
+          background: rgba(34, 197, 94, 0.1);
+          color: #16a34a;
+        }
+
+        .status-item.offline {
+          background: rgba(239, 68, 68, 0.1);
+          color: #dc2626;
+        }
+
+        .status-item.pending {
+          background: rgba(245, 158, 11, 0.1);
+          color: #d97706;
+        }
+
+        .status-item.failed {
+          background: rgba(239, 68, 68, 0.1);
+          color: #dc2626;
+        }
+
+        .status-item.success {
+          background: rgba(34, 197, 94, 0.1);
+          color: #16a34a;
+        }
+
+        .status-text {
+          white-space: nowrap;
+        }
+
+        .sync-button {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.375rem 0.75rem;
+          background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+          color: white;
+          border: none;
+          border-radius: 6px;
+          font-size: 0.75rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .sync-button:hover:not(:disabled) {
+          background: linear-gradient(135deg, #2563eb, #1e40af);
+          transform: translateY(-1px);
+        }
+
+        .sync-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        /* Failed Operations Modal */
+        .failed-operations-modal {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 10000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .modal-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          backdrop-filter: blur(4px);
+        }
+
+        .modal-content {
+          position: relative;
+          background: white;
+          border-radius: 12px;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+          max-width: 600px;
+          width: 90%;
+          max-height: 80vh;
+          overflow: hidden;
+        }
+
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1rem 1.5rem;
+          border-bottom: 1px solid #e2e8f0;
+          background: #f8fafc;
+        }
+
+        .modal-title {
+          font-size: 1.125rem;
+          font-weight: 600;
+          color: #1e293b;
+          margin: 0;
+        }
+
+        .close-button {
+          background: none;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          padding: 0.25rem;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+        }
+
+        .close-button:hover {
+          background: #e2e8f0;
+          color: #374151;
+        }
+
+        .modal-body {
+          padding: 1.5rem;
+          max-height: 60vh;
+          overflow-y: auto;
+        }
+
+        .no-failed {
+          text-align: center;
+          color: #64748b;
+          font-style: italic;
+        }
+
+        .failed-list {
+          space-y: 1rem;
+        }
+
+        .failed-item {
+          background: #fef2f2;
+          border: 1px solid #fecaca;
+          border-radius: 8px;
+          padding: 1rem;
+          margin-bottom: 1rem;
+        }
+
+        .failed-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 0.5rem;
+        }
+
+        .operation-type {
+          font-weight: 600;
+          color: #dc2626;
+          text-transform: uppercase;
+          font-size: 0.75rem;
+        }
+
+        .failed-time {
+          font-size: 0.75rem;
+          color: #6b7280;
+        }
+
+        .failed-details {
+          space-y: 0.5rem;
+        }
+
+        .error-message {
+          color: #dc2626;
+          font-size: 0.875rem;
+          margin: 0 0 0.5rem 0;
+        }
+
+        .operation-data {
+          background: #f9fafb;
+          border: 1px solid #e5e7eb;
+          border-radius: 4px;
+          padding: 0.5rem;
+        }
+
+        .operation-data pre {
+          font-size: 0.75rem;
+          color: #374151;
+          margin: 0.25rem 0 0 0;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        .modal-footer {
+          padding: 1rem 1.5rem;
+          border-top: 1px solid #e2e8f0;
+          background: #f8fafc;
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .close-modal-button {
+          padding: 0.5rem 1rem;
+          background: #6b7280;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .close-modal-button:hover {
+          background: #4b5563;
+        }
+
+        @media (max-width: 768px) {
+          .offline-status-display {
+            gap: 0.5rem;
+          }
+
+          .status-indicators {
+            gap: 0.5rem;
+          }
+
+          .status-text {
+            display: none;
+          }
+
+          .status-item {
+            padding: 0.25rem;
+          }
+
+          .modal-content {
+            width: 95%;
+            margin: 1rem;
+          }
+        }
+      `}</style>
+    </>
+  );
 }
 
 export function OfflineProvider({ 

@@ -33,17 +33,16 @@ import {
 } from "lucide-react";
 import EnhancedProductManagement from "@/components/EnhancedProductManagement";
 import EnhancedSalesManagement from "@/components/EnhancedSalesManagement";
-import OfflineProvider, { useOfflineQueue } from "../../../providers/OfflineProvider";
-import OfflineBanner, { OfflineIndicator } from "../../../components/OfflineBanner";
+import ImageUpload from "@/components/ImageUpload";
+import Pagination from "@/components/Pagination";
+import OfflineProvider, { useOfflineQueue, OfflineStatusDisplay } from "../../../providers/OfflineProvider";
+import OfflineBanner from "../../../components/OfflineBanner";
 
 
 const fetcher = (url: string) => {
   const token = localStorage.getItem("token");
-  console.log("🔍 Fetcher called for URL:", url);
-  console.log("🔍 Token from localStorage:", token ? "Token exists" : "No token found");
   
   if (!token) {
-    console.error("❌ No token found in localStorage");
     // Redirect to login instead of throwing error
     window.location.href = "/login";
     throw new Error("No authentication token found");
@@ -55,9 +54,7 @@ const fetcher = (url: string) => {
       "Content-Type": "application/json"
     }
   }).then(res => {
-    console.log("🔍 Response status:", res.status, "for URL:", url);
     if (!res.ok) {
-      console.error("❌ API request failed:", res.status, res.statusText);
       if (res.status === 401) {
         // Token expired or invalid, redirect to login
         localStorage.removeItem("token");
@@ -112,6 +109,7 @@ interface ServiceOperation {
   workerRole: "barber" | "washer";
   workerId?: string;
   by: "cash" | "mobile banking(telebirr)";
+  paymentImageUrl?: string;
   otherWorker?: {
     id: string;
     role: string;
@@ -136,6 +134,7 @@ interface AdminServiceOperation {
   workerId: string;
   status: string;
   by: "cash" | "mobile banking(telebirr)";
+  paymentImageUrl?: string;
 }
 
 // EditOperationForm component is now imported from @/components/EditOperationForm
@@ -151,7 +150,6 @@ function AdminDashboardContent() {
     const userData = localStorage.getItem("user");
     
     if (!token || !userData) {
-      console.log("❌ No authentication data found, redirecting to login");
       window.location.href = "/login";
       return;
     }
@@ -159,13 +157,11 @@ function AdminDashboardContent() {
     try {
       const parsedUser = JSON.parse(userData);
       if (parsedUser.role !== "admin") {
-        console.log("❌ User is not admin, redirecting to appropriate dashboard");
         window.location.href = `/dashboard/${parsedUser.role}`;
         return;
       }
       setUser(parsedUser);
     } catch (error) {
-      console.error("❌ Error parsing user data:", error);
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       localStorage.removeItem("branchId");
@@ -181,8 +177,11 @@ function AdminDashboardContent() {
   const [selectedBarberId, setSelectedBarberId] = useState<string>("");
   const [selectedWasherId, setSelectedWasherId] = useState<string>("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "mobile banking(telebirr)">("cash");
+  const [paymentImageUrl, setPaymentImageUrl] = useState<string>("");
   const [saving, setSaving] = useState<boolean>(false);
   const [showHistory, setShowHistory] = useState<boolean>(true);
+  
+
   
   // Toggle states for Add Product and Record Sale
   const [activeSection, setActiveSection] = useState<'none' | 'addProduct' | 'recordSale' | 'history'>('none');
@@ -222,6 +221,20 @@ function AdminDashboardContent() {
   // Loading states
   const [updating, setUpdating] = useState<boolean>(false);
   const [deleting, setDeleting] = useState<boolean>(false);
+  
+  // Payment filter state
+  const [paymentFilter, setPaymentFilter] = useState<string>("all");
+  
+  // Pagination states for Service Operations History
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  // Image preview state for history table
+  const [previewImage, setPreviewImage] = useState<{ isOpen: boolean; imageUrl: string; title: string }>({
+    isOpen: false,
+    imageUrl: "",
+    title: ""
+  });
 
   // Get offline queue functionality - MUST be called before any conditional returns
   const { isOffline, queueService } = useOfflineQueue();
@@ -282,21 +295,67 @@ function AdminDashboardContent() {
   }, [branchData]);
 
   // Fetch admin service operations history for the current admin
-  const { data: serviceOperationsHistory = [], isLoading: loadingHistory, error: historyError } = useSWR(
+  const { data: serviceOperationsHistory = [], isLoading: loadingHistory, error: historyError, mutate: mutateHistory } = useSWR(
     showHistory ? `/api/admin/service-operations` : null,
-    fetcher
+    fetcher,
+    {
+      refreshInterval: 5000, // Poll every 5 seconds
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true
+    }
   );
-  
-  console.log("🔍 showHistory state:", showHistory);
-  console.log("🔍 SWR URL:", showHistory ? `/api/admin/service-operations` : null);
-  console.log("🔍 loadingHistory:", loadingHistory);
-  console.log("🔍 historyError:", historyError);
 
   // Ensure serviceOperations is always an array and filter to only pending operations
   const safeServiceOperationsHistory = Array.isArray(serviceOperationsHistory) ? serviceOperationsHistory.filter(op => op.status === "pending") : [];
   
-  console.log("🔍 Service operations history:", serviceOperationsHistory);
-  console.log("🔍 Safe service operations history:", safeServiceOperationsHistory);
+  // Filter operations by payment method
+  const getFilteredOperations = () => {
+    return safeServiceOperationsHistory.filter((operation: ServiceOperation) => {
+      if (paymentFilter === "all") return true;
+      return operation.by === paymentFilter;
+    });
+  };
+
+  // Get paginated data
+  const getPaginatedOperations = () => {
+    const filteredData = getFilteredOperations();
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredData.slice(startIndex, endIndex);
+  };
+
+  // Calculate pagination info
+  const getPaginationInfo = () => {
+    const filteredData = getFilteredOperations();
+    const totalItems = filteredData.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const startItem = (currentPage - 1) * itemsPerPage + 1;
+    const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+    return {
+      totalItems,
+      totalPages,
+      startItem,
+      endItem,
+      currentPage
+    };
+  };
+
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  // Handle items per page change
+  const handleItemsPerPageChange = (limit: number) => {
+    setItemsPerPage(limit);
+    setCurrentPage(1); // Reset to first page when changing limit
+  };
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [paymentFilter]);
   
   // Filter workers by role
   // const barbersHistory = barbersList.filter((worker: Barber) => worker.role === "barber");
@@ -308,7 +367,6 @@ function AdminDashboardContent() {
       // Handle edit operation
       const selectedService = services.find(s => s.name === selectedServiceId);
       if (!selectedService) {
-        console.error("❌ Selected service not found");
         return;
       }
 
@@ -337,7 +395,6 @@ function AdminDashboardContent() {
       }
 
       if (!workerId || !workerName) {
-        console.error("❌ No worker selected");
         return;
       }
 
@@ -347,7 +404,8 @@ function AdminDashboardContent() {
         workerName: workerName,
         workerRole: workerRole,
         workerId: workerId,
-        by: paymentMethod
+        by: paymentMethod,
+        paymentImageUrl: paymentImageUrl || undefined
       };
 
       handleUpdateOperation(updatedData);
@@ -355,7 +413,6 @@ function AdminDashboardContent() {
       // Handle add operation (existing logic)
       const selectedService = services.find(s => s.name === selectedServiceId);
       if (!selectedService) {
-        console.error("❌ Selected service not found");
         return;
       }
 
@@ -392,6 +449,7 @@ function AdminDashboardContent() {
       setSelectedServiceId('');
       setSelectedBarberId('');
       setSelectedWasherId('');
+      // Don't clear paymentImageUrl here - it should persist until form is submitted
     }
   };
 
@@ -424,6 +482,9 @@ function AdminDashboardContent() {
     if (service.washerPrice && !selectedWasherId) return true;
     if (!selectedBarberId && !selectedWasherId) return true;
 
+    // Check if image is required for mobile banking
+    if (paymentMethod === "mobile banking(telebirr)" && !paymentImageUrl) return true;
+
     // In edit mode, we don't need to check for duplicate services
     if (!isEditMode) {
       // Check if service is already selected (only for add mode)
@@ -438,6 +499,55 @@ function AdminDashboardContent() {
 
   // Save service operations to User collection
   const handleFinish = async () => {
+    // Handle edit mode
+    if (isEditMode && editingOperation) {
+      // Get the current service data to determine price
+      const service = getSelectedService();
+      if (!service) {
+        return;
+      }
+
+      // Determine worker details and price based on selected worker
+      let workerName = '';
+      let workerRole: 'barber' | 'washer' = 'barber';
+      let workerId = '';
+      let price = 0;
+
+      if (selectedBarberId) {
+        const barber = barbersList.find(b => b._id === selectedBarberId);
+        workerName = barber?.name || '';
+        workerRole = 'barber';
+        workerId = selectedBarberId;
+        price = service.barberPrice || 0;
+      } else if (selectedWasherId) {
+        const washer = washersList.find(w => w._id === selectedWasherId);
+        workerName = washer?.name || '';
+        workerRole = 'washer';
+        workerId = selectedWasherId;
+        price = service.washerPrice || 0;
+      }
+
+      const updateData = {
+        name: selectedServiceId,
+        price: price,
+        workerName: workerName,
+        workerRole: workerRole,
+        workerId: workerId,
+        by: paymentMethod,
+        paymentImageUrl: paymentImageUrl || undefined
+      };
+      
+
+      
+      // Pass both the update data and the original operation for matching
+      await handleUpdateOperation({
+        ...updateData,
+        originalOperation: editingOperation
+      });
+      return;
+    }
+
+    // Handle add mode
     if (selectedServices.length === 0) return;
     
     setSaving(true);
@@ -475,14 +585,12 @@ function AdminDashboardContent() {
 
       // If offline, queue the operation
       if (isOffline) {
-        console.log('📱 [OFFLINE] Queueing service operations:', serviceData);
         await queueService(serviceData);
         
         // Reset form
         setSelectedServices([]);
         mutateOperations();
         
-        console.log('✅ [OFFLINE] Service operations queued successfully');
         setModal({
           isOpen: true,
           title: "Saved Offline",
@@ -518,29 +626,33 @@ function AdminDashboardContent() {
       
       selectedServices.forEach(service => {
         if (service.barberId && service.barberPrice && service.barberName) {
-          adminServiceOperations.push({
+          const operation = {
             name: service.serviceName,
             price: service.barberPrice,
             workerName: service.barberName,
-            workerRole: "barber",
+            workerRole: "barber" as const,
             workerId: service.barberId,
             status: "pending",
-            by: paymentMethod
-          });
+            by: paymentMethod,
+            paymentImageUrl: paymentImageUrl || undefined
+          };
+          adminServiceOperations.push(operation);
         }
       });
       
       selectedServices.forEach(service => {
         if (service.washerId && service.washerPrice && service.washerName) {
-          adminServiceOperations.push({
+          const operation = {
             name: service.serviceName,
             price: service.washerPrice,
             workerName: service.washerName,
-            workerRole: "washer",
+            workerRole: "washer" as const,
             workerId: service.washerId,
             status: "pending",
-            by: paymentMethod
-          });
+            by: paymentMethod,
+            paymentImageUrl: paymentImageUrl || undefined
+          };
+          adminServiceOperations.push(operation);
         }
       });
 
@@ -555,9 +667,6 @@ function AdminDashboardContent() {
         body: JSON.stringify({ serviceOperations: workerServiceOperations }),
       });
 
-      console.log("🔍 Sending admin service operations to API:", adminServiceOperations);
-      console.log("🔍 Payment method being sent:", paymentMethod);
-      
       const adminResponse = await fetch("/api/admin/service-operations", {
         method: "POST",
         headers: { 
@@ -568,9 +677,12 @@ function AdminDashboardContent() {
       });
 
       if (workerResponse.ok && adminResponse.ok) {
+        const adminResponseData = await adminResponse.json();
+        
         setSelectedServices([]);
+        setPaymentImageUrl(''); // Clear payment image after successful save
         mutateOperations();
-        console.log("Setting success modal");
+        mutateHistory(); // Also refresh the history data
         setModal({
           isOpen: true,
           title: "Success",
@@ -578,10 +690,10 @@ function AdminDashboardContent() {
           type: "success"
         });
       } else {
+        const adminErrorData = await adminResponse.json().catch(() => ({}));
         throw new Error("Failed to save services");
       }
     } catch (error: unknown) {
-      console.error("Error saving services:", error instanceof Error ? error.message : "Unknown error");
       setModal({
         isOpen: true,
         title: "Error",
@@ -603,6 +715,25 @@ function AdminDashboardContent() {
 
   const toggleRecordSale = () => {
     setActiveSection(activeSection === 'recordSale' ? 'none' : 'recordSale');
+  };
+
+  // Download payment proof image
+  const downloadPaymentProof = async (imageUrl: string, serviceName: string) => {
+    try {
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `payment-proof-${serviceName}-${Date.now()}.jpg`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      // Fallback to opening in new tab
+      window.open(imageUrl, '_blank');
+    }
   };
 
   const toggleSidebar = () => {
@@ -628,23 +759,34 @@ function AdminDashboardContent() {
   };
 
   const closeModal = () => {
-    console.log("Closing modal");
     setModal(prev => ({ ...prev, isOpen: false }));
   };
 
   // Edit operation function
   const handleEditOperation = (operation: ServiceOperation) => {
-    console.log("🔍 handleEditOperation called with:", operation);
-    console.log("🔍 Operation ID:", operation._id);
-    
     // Set edit mode and populate form
     setIsEditMode(true);
-    setEditingOperationId(operation._id || `temp_${Date.now()}`);
+    // Ensure we have a proper string ID - use a combination of properties if _id is missing
+    let operationId = '';
+    if (operation._id) {
+      operationId = operation._id.toString();
+    } else {
+      // Create a unique ID based on operation properties
+      operationId = `${operation.name}_${operation.workerName}_${operation.price}_${operation.createdAt}`;
+    }
+    setEditingOperationId(operationId);
     setEditingOperation(operation);
     
     // Populate the main form with operation data
     setSelectedServiceId(operation.name || '');
     setPaymentMethod(operation.by || 'cash');
+    
+    // Set payment image URL if it exists
+    if (operation.paymentImageUrl) {
+      setPaymentImageUrl(operation.paymentImageUrl);
+    } else {
+      setPaymentImageUrl('');
+    }
     
     // Set worker based on role
     if (operation.workerRole === 'barber') {
@@ -657,8 +799,6 @@ function AdminDashboardContent() {
     
     // Clear selected services since we're editing a single operation
     setSelectedServices([]);
-    
-    console.log("🔍 Edit mode activated for operation:", operation);
   };
 
   // Cancel edit function
@@ -670,14 +810,12 @@ function AdminDashboardContent() {
     setSelectedBarberId('');
     setSelectedWasherId('');
     setPaymentMethod('cash');
+    setPaymentImageUrl('');
     setSelectedServices([]);
-    console.log("🔍 Edit mode cancelled");
   };
 
   // Delete operation function
   const handleDeleteOperation = (operation: ServiceOperation) => {
-    console.log("🔍 handleDeleteOperation called with:", operation);
-    
     // Create a proper operation object with all required fields
     const operationToDelete = {
       ...operation,
@@ -693,18 +831,19 @@ function AdminDashboardContent() {
       isOpen: true,
       operation: operationToDelete
     });
-    console.log("🔍 Delete modal state set to open with operation:", operationToDelete);
   };
 
   // Update operation function
   const handleUpdateOperation = async (updatedData: any) => {
     if (!editingOperation) {
-      console.error("❌ No operation to update");
       return;
     }
     
-    console.log("🔍 handleUpdateOperation called with:", updatedData);
-    console.log("🔍 Original operation to update:", editingOperation);
+    if (!editingOperationId) {
+      return;
+    }
+    
+
     
     setUpdating(true);
     try {
@@ -712,13 +851,6 @@ function AdminDashboardContent() {
       if (!token) {
         throw new Error("No authentication token found");
       }
-
-      // Use the stored editing operation as the original operation
-      const originalOperation = editingOperation;
-      console.log("🔍 Using stored original operation:", originalOperation);
-
-      console.log("🔍 Using operation ID for update:", editingOperationId);
-      console.log("🔍 Original operation for reference:", originalOperation);
       
       const response = await fetch(`/api/admin/service-operations/${editingOperationId}`, {
         method: "PUT",
@@ -726,14 +858,12 @@ function AdminDashboardContent() {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({
-          ...updatedData,
-          originalOperation: originalOperation
-        })
+        body: JSON.stringify(updatedData)
       });
 
       const responseData = await response.json();
-      console.log("🔍 Update response:", response.status, responseData);
+      
+
 
       if (response.ok) {
         setModal({
@@ -746,15 +876,12 @@ function AdminDashboardContent() {
         // Exit edit mode and reset form
         cancelEdit();
         
-        // Refresh the data by refetching
-        setTimeout(() => {
-          window.location.reload();
-        }, 1500);
+        // Refresh the data using SWR mutate instead of page reload
+        mutateHistory();
       } else {
         throw new Error(responseData.error || "Failed to update operation");
       }
     } catch (error) {
-      console.error("❌ Error updating operation:", error);
       setModal({
         isOpen: true,
         title: "Error",
@@ -769,11 +896,8 @@ function AdminDashboardContent() {
   // Delete operation function
   const handleConfirmDelete = async () => {
     if (!deleteModal.operation) {
-      console.error("❌ No operation to delete");
       return;
     }
-    
-    console.log("🔍 handleConfirmDelete called for operation:", deleteModal.operation);
     
     setDeleting(true);
     try {
@@ -784,9 +908,6 @@ function AdminDashboardContent() {
 
       // Since the operations don't have proper _id fields, we need to use a different approach
       const operationId = deleteModal.operation._id || `operation_${Date.now()}`;
-      
-      console.log("🔍 Using operation ID for delete:", operationId);
-      console.log("🔍 Original operation for reference:", deleteModal.operation);
       
       const response = await fetch(`/api/admin/service-operations/${operationId}`, {
         method: "DELETE",
@@ -800,7 +921,6 @@ function AdminDashboardContent() {
       });
 
       const responseData = await response.json();
-      console.log("🔍 Delete response:", response.status, responseData);
 
       if (response.ok) {
         setModal({
@@ -811,15 +931,12 @@ function AdminDashboardContent() {
         });
         setDeleteModal({ isOpen: false, operation: null });
         
-        // Refresh the data by refetching
-        setTimeout(() => {
-        window.location.reload();
-        }, 1500);
+        // Refresh the data using SWR mutate instead of page reload
+        mutateHistory();
       } else {
         throw new Error(responseData.error || "Failed to delete operation");
       }
     } catch (error) {
-      console.error("❌ Error deleting operation:", error);
       setModal({
         isOpen: true,
         title: "Error",
@@ -854,12 +971,7 @@ function AdminDashboardContent() {
     );
   }
 
-  // Debug logging
-  console.log('🔧 [DEBUG] Admin Dashboard - User:', user);
-  console.log('🔧 [DEBUG] Admin Dashboard - BranchId:', branchId);
-  console.log('🔧 [DEBUG] Offline Status:', isOffline);
 
-  console.log('🔧 [DEBUG] Delete Modal State:', deleteModal);
 
   return (
     <>
@@ -1026,7 +1138,7 @@ function AdminDashboardContent() {
               <p className="branch-text">Branch: {branchName || branchId}</p>
             </div>
             <div className="flex items-center space-x-3">
-              <OfflineIndicator className="text-sm" />
+              <OfflineStatusDisplay />
             </div>
           </div>
 
@@ -1127,18 +1239,48 @@ function AdminDashboardContent() {
           <div className="container mb-6">
             <div className="flex justify-between items-center mb-4">
               <h2 className="section-title">Service Operations History</h2>
-              <button
-                onClick={() => window.location.reload()}
-                className="action-button"
-                disabled={loadingHistory}
-              >
-                {loadingHistory ? (
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                ) : (
-                  <TrendingUp className="w-4 h-4 mr-2" />
-                )}
-                Refresh
-              </button>
+              <div className="flex items-center gap-4">
+                {/* Payment Method Filter */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={paymentFilter}
+                    onChange={(e) => setPaymentFilter(e.target.value)}
+                    className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="all">All Payments</option>
+                    <option value="cash">💵 Cash Only</option>
+                    <option value="mobile banking(telebirr)">📱 Mobile Banking Only</option>
+                  </select>
+                  {paymentFilter !== "all" && (
+                    <button
+                      onClick={() => setPaymentFilter("all")}
+                      className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+                      title="Clear filter"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                {/* Polling Status Indicator */}
+                <div className="flex items-center gap-2 text-xs text-gray-600">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span>Auto-refresh every 5s</span>
+                </div>
+
+                <button
+                  onClick={() => mutateHistory()}
+                  className="action-button"
+                  disabled={loadingHistory}
+                >
+                  {loadingHistory ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  ) : (
+                    <TrendingUp className="w-4 h-4 mr-2" />
+                  )}
+                  Refresh Now
+                </button>
+              </div>
             </div>
             
             {/* Summary Cards */}
@@ -1149,7 +1291,9 @@ function AdminDashboardContent() {
                 </div>
                 <div>
                   <h3 className="summary-label-small">Pending Operations</h3>
-                  <p className="summary-value-small text-blue-600">{safeServiceOperationsHistory.length}</p>
+                  <p className="summary-value-small text-blue-600">
+                    {getFilteredOperations().length}
+                  </p>
                 </div>
               </div>
               <div className="summary-card-small">
@@ -1159,13 +1303,13 @@ function AdminDashboardContent() {
                 <div>
                   <h3 className="summary-label-small">ዘይተረከበ ብር</h3>
                   <p className="summary-value-small text-green-600">
-                    {safeServiceOperationsHistory.reduce((total, op) => total + (op.price || 0), 0)} ብር
+                    {getFilteredOperations().reduce((total, op) => total + (op.price || 0), 0)} ብር
                   </p>
                 </div>
               </div>
             </div>
 
-            {loadingHistory ? (
+            {loadingHistory && !serviceOperationsHistory.length ? (
               <div className="loading-state">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
                 <p className="text-slate-600 mt-2">Loading history...</p>
@@ -1184,32 +1328,56 @@ function AdminDashboardContent() {
                   Retry
                 </button>
               </div>
-            ) : safeServiceOperationsHistory.length === 0 ? (
+            ) : getFilteredOperations().length === 0 ? (
               <div className="empty-state">
                 <Clock className="w-12 h-12 text-slate-400 mx-auto mb-2" />
-                <p className="text-slate-500">No pending service operations found</p>
+                <p className="text-slate-500">
+                  {paymentFilter === "all" 
+                    ? "No pending service operations found" 
+                    : `No ${paymentFilter === "cash" ? "cash" : "mobile banking"} operations found`
+                  }
+                </p>
                 <p className="text-slate-400 text-sm mt-2">
-                  All operations may have been completed or there are no operations yet.
+                  {paymentFilter === "all" 
+                    ? "All operations may have been completed or there are no operations yet."
+                    : `Try selecting a different payment method or check if there are any ${paymentFilter === "cash" ? "cash" : "mobile banking"} operations.`
+                  }
                 </p>
               </div>
             ) : (
               <div className="table-container">
+                {/* Background refresh indicator */}
+                {loadingHistory && serviceOperationsHistory.length > 0 && (
+                  <div className="mb-4 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-center gap-2 text-blue-700 text-sm">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-500"></div>
+                      <span>Refreshing data...</span>
+                    </div>
+                  </div>
+                )}
+                
                 <table className="data-table">
                   <thead>
                     <tr>
+                      <th>#</th>
                       <th>Service</th>
                       <th>Price</th>
                       <th>Worker</th>
                       <th>Role</th>
                       <th>Payment</th>
+                      <th>Proof</th>
                       <th>Date</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {safeServiceOperationsHistory.map((operation: ServiceOperation, index: number) => (
-                      <tr key={operation._id || `operation_${index}_${operation.workerName}_${operation.createdAt}`}>
-                        <td className="font-medium">{operation.name || 'N/A'}</td>
+                    {getPaginatedOperations().map((operation: ServiceOperation, index: number) => {
+                      const paginationInfo = getPaginationInfo();
+                      const rowNumber = paginationInfo.startItem + index;
+                                            return (
+                        <tr key={operation._id || `operation_${index}_${operation.workerName}_${operation.createdAt}`}>
+                          <td className="text-center font-medium text-gray-600">{rowNumber}</td>
+                          <td className="font-medium">{operation.name || 'N/A'}</td>
                         <td>
                           <span className="price-text">
                             {operation.price || 0}ብር
@@ -1226,6 +1394,39 @@ function AdminDashboardContent() {
                             {operation.by === 'cash' ? '💵 Cash' : operation.by === 'mobile banking(telebirr)' ? '📱 Mobile Banking' : '💵 Cash'}
                           </span>
                         </td>
+                        <td>
+                          {operation.paymentImageUrl ? (
+                            <div className="space-y-2">
+                              <div className="flex gap-1">
+                                <button
+                                  onClick={() => {
+                                    setPreviewImage({
+                                      isOpen: !previewImage.isOpen || previewImage.imageUrl !== operation.paymentImageUrl,
+                                      imageUrl: operation.paymentImageUrl!,
+                                      title: `Payment Proof - ${operation.name}`
+                                    });
+                                  }}
+                                  className="view-button"
+                                  title={previewImage.isOpen && previewImage.imageUrl === operation.paymentImageUrl ? "Hide payment proof" : "View payment proof"}
+                                >
+                                  <span>{previewImage.isOpen && previewImage.imageUrl === operation.paymentImageUrl ? "🙈" : "👁️"}</span>
+                                  <span>{previewImage.isOpen && previewImage.imageUrl === operation.paymentImageUrl ? "Hide" : "View"}</span>
+                                </button>
+                                <button
+                                  onClick={() => downloadPaymentProof(operation.paymentImageUrl!, operation.name)}
+                                  className="download-button"
+                                  title="Download payment proof"
+                                >
+                                  <span>📥</span>
+                                  <span>Download</span>
+                                </button>
+                              </div>
+                              {/* Payment proof preview will be shown in modal below */}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-sm">-</span>
+                          )}
+                        </td>
                         <td className="text-xs text-slate-500">
                           {operation.createdAt ? (
                             <EthiopianDate dateString={operation.createdAt} showTime={true} showWeekday={false} />
@@ -1237,7 +1438,6 @@ function AdminDashboardContent() {
                           <div className="flex gap-2">
                             <button
                               onClick={() => {
-                                console.log("🔍 Edit button clicked for operation:", operation);
                                 handleEditOperation(operation);
                               }}
                               className="action-icon-button edit"
@@ -1247,7 +1447,6 @@ function AdminDashboardContent() {
                             </button>
                             <button
                               onClick={() => {
-                                console.log("🔍 Delete button clicked for operation:", operation);
                                 handleDeleteOperation(operation);
                               }}
                               className="action-icon-button delete"
@@ -1258,9 +1457,23 @@ function AdminDashboardContent() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
+                
+                {/* Pagination Component */}
+                {getFilteredOperations().length > 0 && (
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={getPaginationInfo().totalPages}
+                    totalItems={getPaginationInfo().totalItems}
+                    itemsPerPage={itemsPerPage}
+                    onPageChange={handlePageChange}
+                    onItemsPerPageChange={handleItemsPerPageChange}
+                    showItemsPerPage={true}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -1356,7 +1569,10 @@ function AdminDashboardContent() {
                       name="paymentMethod"
                       value="cash"
                       checked={paymentMethod === "cash"}
-                      onChange={(e) => setPaymentMethod(e.target.value as "cash" | "mobile banking(telebirr)")}
+                      onChange={(e) => {
+                        setPaymentMethod(e.target.value as "cash" | "mobile banking(telebirr)");
+                        setPaymentImageUrl(""); // Clear image when switching to cash
+                      }}
                       className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 focus:ring-blue-500"
                     />
                     <span className="text-sm font-medium text-gray-700">💵 Cash</span>
@@ -1374,6 +1590,22 @@ function AdminDashboardContent() {
                   </label>
                 </div>
               </div>
+
+              {/* Image Upload for Mobile Banking */}
+              {paymentMethod === "mobile banking(telebirr)" && (
+                <div className="form-group mt-6">
+                  <label className="form-label">Payment Proof (Required)</label>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Please upload a screenshot or photo of your mobile banking payment confirmation
+                  </p>
+                  <ImageUpload
+                    onImageUpload={setPaymentImageUrl}
+                    onImageRemove={() => setPaymentImageUrl("")}
+                    currentImageUrl={paymentImageUrl}
+                    disabled={updating}
+                  />
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex gap-3 mt-6">
@@ -1456,6 +1688,11 @@ function AdminDashboardContent() {
                         <div className="text-xs text-slate-600">
                           Payment: {paymentMethod === "cash" ? "💵 Cash" : "📱 Mobile Banking (Telebirr)"}
                         </div>
+                        {paymentImageUrl && (
+                          <div className="text-xs text-green-600 font-medium">
+                            ✅ Payment proof uploaded
+                          </div>
+                        )}
                       </div>
                     ))}
                     
@@ -1534,6 +1771,8 @@ function AdminDashboardContent() {
           autoClose={modal.type === "success"}
           autoCloseDelay={3000}
         />
+
+
       </div>
 
       <style jsx>{`
@@ -1976,10 +2215,22 @@ function AdminDashboardContent() {
           border-bottom: 2px solid #e5e7eb;
         }
 
+        .data-table th:first-child {
+          text-align: center;
+          width: 60px;
+        }
+
         .data-table td {
           padding: 15px;
           border-bottom: 1px solid #f3f4f6;
           font-size: 14px;
+        }
+
+        .data-table td:first-child {
+          text-align: center;
+          font-weight: 600;
+          color: #64748b;
+          width: 60px;
         }
 
         .data-table tr:hover {
@@ -2192,8 +2443,91 @@ function AdminDashboardContent() {
           }
         }
 
+        .animate-slideIn {
+          animation: slideIn 0.3s ease-out;
+        }
+
         .animate-fadeIn {
           animation: fadeIn 0.3s ease-out;
+        }
+
+        /* Image Upload Styles */
+        .image-preview-container {
+          display: inline-block;
+          position: relative;
+        }
+
+        .image-preview-container img {
+          border-radius: 8px;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .image-preview-container .remove-button {
+          position: absolute;
+          top: -8px;
+          right: -8px;
+          background: #ef4444;
+          color: white;
+          border-radius: 50%;
+          width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 2px solid white;
+          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          transition: all 0.2s ease;
+        }
+
+        .image-preview-container .remove-button:hover {
+          background: #dc2626;
+          transform: scale(1.1);
+        }
+
+        /* View Button Styles */
+        .view-button {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 8px;
+          background: #eff6ff;
+          color: #2563eb;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 500;
+          border: 1px solid #bfdbfe;
+          transition: all 0.2s ease;
+          cursor: pointer;
+        }
+
+        .view-button:hover {
+          background: #dbeafe;
+          border-color: #93c5fd;
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(37, 99, 235, 0.1);
+        }
+
+        /* Download Button Styles */
+        .download-button {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 8px;
+          background: #f0fdf4;
+          color: #16a34a;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 500;
+          border: 1px solid #bbf7d0;
+          transition: all 0.2s ease;
+          cursor: pointer;
+        }
+
+        .download-button:hover {
+          background: #dcfce7;
+          border-color: #86efac;
+          transform: translateY(-1px);
+          box-shadow: 0 2px 4px rgba(22, 163, 74, 0.1);
         }
 
         .animate-slideIn {
@@ -2274,7 +2608,97 @@ function AdminDashboardContent() {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
+
+        /* Payment Proof Preview Modal */
+        .payment-proof-backdrop {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          z-index: 9999;
+          cursor: pointer;
+        }
+
+        .payment-proof-preview {
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: white;
+          border-radius: 16px;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+          z-index: 10000;
+          max-width: 90vw;
+          max-height: 90vh;
+          overflow: hidden;
+        }
+
+        .preview-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 1rem 1.5rem;
+          border-bottom: 1px solid #e2e8f0;
+          background: #f8fafc;
+        }
+
+        .preview-title {
+          font-size: 1rem;
+          font-weight: 600;
+          color: #374151;
+        }
+
+        .close-preview {
+          background: none;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          padding: 0.25rem;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+        }
+
+        .close-preview:hover {
+          background: #e2e8f0;
+          color: #374151;
+        }
+
+        .preview-image {
+          max-width: 100%;
+          max-height: 70vh;
+          object-fit: contain;
+          display: block;
+        }
       `}</style>
+
+      {/* Payment proof preview modal */}
+      {previewImage.isOpen && (
+        <>
+          <div className="payment-proof-backdrop" onClick={() => setPreviewImage({ isOpen: false, imageUrl: "", title: "" })}></div>
+          <div className="payment-proof-preview">
+            <div className="preview-header">
+              <span className="preview-title">{previewImage.title}</span>
+              <button
+                type="button"
+                onClick={() => setPreviewImage({ isOpen: false, imageUrl: "", title: "" })}
+                className="close-preview"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <img 
+              src={previewImage.imageUrl} 
+              alt="Payment proof" 
+              className="preview-image"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          </div>
+        </>
+      )}
     </>
   );
 }

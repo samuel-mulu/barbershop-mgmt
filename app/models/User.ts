@@ -11,6 +11,7 @@ interface ServiceOperation {
 }
 
 interface AdminServiceOperation {
+  _id?: mongoose.Types.ObjectId;
   name: string;
   price: number;
   status: 'pending' | 'finished';
@@ -20,6 +21,7 @@ interface AdminServiceOperation {
   workerRole: 'barber' | 'washer';
   workerId: mongoose.Types.ObjectId;
   by: 'cash' | 'mobile banking(telebirr)';
+  paymentImageUrl?: string;
 }
 
 interface Product {
@@ -38,6 +40,10 @@ interface ProductSale {
   totalSoldMoney: number;
   productId: string;
   createdAt: Date;
+  finishedDate?: Date; // Date when the sale was marked as finished
+  by?: 'cash' | 'mobile banking(telebirr)';
+  paymentImageUrl?: string;
+  status?: 'pending' | 'finished';
 }
 
 interface Withdrawal {
@@ -75,12 +81,14 @@ const adminServiceOperationSchema = new mongoose.Schema({
   price: { type: Number, required: true }, // Full price
   status: { type: String, enum: ['pending', 'finished'], default: 'pending' },
   createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }, // When operation was last updated
   finishedDate: { type: Date }, // When operation was marked as finished
   workerName: { type: String, required: true },
   workerRole: { type: String, enum: ['barber', 'washer'], required: true },
   workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  by: { type: String, enum: ['cash', 'mobile banking(telebirr)'], default: 'cash' }
-}, { _id: false });
+  by: { type: String, enum: ['cash', 'mobile banking(telebirr)'], default: 'cash' },
+  paymentImageUrl: { type: String } // Payment proof image URL
+}, { _id: true });
 
 // Product schema as subcollection
 const productSchema = new mongoose.Schema({
@@ -119,7 +127,11 @@ const productSaleSchema = new mongoose.Schema({
   pricePerUnit: { type: Number, default: 0, min: 0 },
   totalSoldMoney: { type: Number, default: 0, min: 0 },
   productId: { type: String, default: "product" },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  finishedDate: { type: Date }, // Date when the sale was marked as finished
+  by: { type: String, enum: ['cash', 'mobile banking(telebirr)'], default: 'cash' },
+  paymentImageUrl: { type: String }, // Payment proof image URL
+  status: { type: String, enum: ['pending', 'finished'], default: 'pending' }
 }, { _id: true });
 
 // Withdrawal schema as separate subcollection
@@ -173,4 +185,9 @@ productSaleSchema.pre('save', function(next) {
   next();
 });
 
-export default mongoose.models.User || mongoose.model("User", userSchema);
+// Force model recompilation to ensure schema changes are applied
+if (mongoose.models.User) {
+  delete mongoose.models.User;
+}
+
+export default mongoose.model("User", userSchema);

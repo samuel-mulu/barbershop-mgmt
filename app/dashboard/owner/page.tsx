@@ -8,7 +8,10 @@ import {
   Building2, 
   Users, 
   BarChart3,
-  LogOut
+  LogOut,
+  Menu,
+  X,
+  UserPlus
 } from "lucide-react";
 
 interface Branch {
@@ -56,6 +59,7 @@ export default function OwnerDashboard() {
   const [viewMode, setViewMode] = useState<'pending' | 'finished'>('pending');
   const [selectedOwnerId, setSelectedOwnerId] = useState<string | null>(null);
   const [selectedDataType, setSelectedDataType] = useState<'products' | 'productSales' | 'withdrawals' | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
 
   // ===== INITIALIZATION =====
   useEffect(() => {
@@ -103,6 +107,10 @@ export default function OwnerDashboard() {
     window.location.href = "/login";
   };
 
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
+
   // ===== MAIN RENDER =====
   if (!ownerId) {
     return (
@@ -116,196 +124,332 @@ export default function OwnerDashboard() {
 
 
   return (
-    <div className="container">
-
-
-      {/* Navigation Tabs */}
-      <div className="navigation-section">
-        <div className="nav-tabs">
-          <button
-            onClick={() => setActiveSection('branches')}
-            className={`nav-tab ${activeSection === 'branches' ? 'active' : ''}`}
-          >
-            <Building2 className="w-4 h-4 mr-2" />
-            Branches
-          </button>
-          <button
-            onClick={() => setActiveSection('staff')}
-            className={`nav-tab ${activeSection === 'staff' ? 'active' : ''}`}
-          >
-            <Users className="w-4 h-4 mr-2" />
-            Staff
-          </button>
-          <button 
-            onClick={() => setActiveSection('reports')}
-            className={`nav-tab ${activeSection === 'reports' ? 'active' : ''}`}
-          >
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Reports
-          </button>
+    <div className="dashboard-container">
+      <div className="flex">
+        {/* Sidebar */}
+        <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+          <div className="sidebar-header">
+            <div className="user-info">
+              <p className="user-name">Owner Dashboard</p>
+              <p className="user-id">ID: {ownerId}</p>
+            </div>
+            <button
+              onClick={toggleSidebar}
+              className="close-sidebar-btn"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          
+          <div className="sidebar-content">
+            <button
+              onClick={() => {
+                setActiveSection('branches');
+                setSidebarOpen(false);
+              }}
+              className={`sidebar-button ${activeSection === 'branches' ? 'active' : ''}`}
+            >
+              <Building2 className="w-4 h-4 mb-1" />
+              <span>Branches</span>
+            </button>
+            
+            <button
+              onClick={() => {
+                setActiveSection('staff');
+                setSidebarOpen(false);
+              }}
+              className={`sidebar-button ${activeSection === 'staff' ? 'active' : ''}`}
+            >
+              <Users className="w-4 h-4 mb-1" />
+              <span>Staff</span>
+            </button>
+            
+            <button
+              onClick={() => {
+                setActiveSection('reports');
+                setSidebarOpen(false);
+              }}
+              className={`sidebar-button ${activeSection === 'reports' ? 'active' : ''}`}
+            >
+              <BarChart3 className="w-4 h-4 mb-1" />
+              <span>Reports</span>
+            </button>
+            
+            <button
+              onClick={() => {
+                window.location.href = "/register";
+              }}
+              className="sidebar-button register"
+            >
+              <UserPlus className="w-4 h-4 mb-1" />
+              <span>Register</span>
+            </button>
+            
+            <button
+              onClick={() => {
+                handleLogout();
+                setSidebarOpen(false);
+              }}
+              className="sidebar-button logout"
+            >
+              <LogOut className="w-4 h-4 mb-1" />
+              <span>Logout</span>
+            </button>
+          </div>
         </div>
-        
-        {/* Logout Button */}
-        <div className="logout-section">
-          <button
-            onClick={handleLogout}
-            className="logout-button"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            Logout
-          </button>
+
+        {/* Main Content */}
+        <div className={`main-content ${sidebarOpen ? 'sidebar-open' : ''}`}>
+          {/* Top Bar */}
+          <div className="top-bar">
+            <button
+              onClick={toggleSidebar}
+              className="menu-button"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="top-bar-info">
+              <p className="welcome-text">Owner Dashboard</p>
+              <p className="user-id-text">ID: {ownerId}</p>
+            </div>
+          </div>
+
+          {/* Content Container */}
+          <div className="content-container">
+            {/* Main Content */}
+            <div className="content-section">
+              {activeSection === 'branches' && (
+                <BranchesSection 
+                  ownerId={ownerId} 
+                  onViewStaff={handleViewStaff} 
+                />
+              )}
+              
+              {activeSection === 'staff' && (
+                <StaffSection 
+                  ownerId={ownerId}
+                  selectedBranch={selectedBranch}
+                  onSelectBranch={handleSelectBranch}
+                  onViewReports={handleViewReports}
+                  onViewOwnerData={handleViewOwnerData}
+                />
+              )}
+              
+              {activeSection === 'reports' && (
+                <ReportsSection 
+                  selectedUser={selectedUser}
+                  onBackToStaff={handleBackToStaff}
+                  viewMode={viewMode}
+                />
+              )}
+              
+              {activeSection === 'ownerData' && selectedOwnerId && selectedDataType && (
+                <OwnerDataSection 
+                  ownerId={selectedOwnerId}
+                  dataType={selectedDataType}
+                  onBackToStaff={handleBackToStaffFromOwnerData}
+                />
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-
-
-
-      {/* Main Content */}
-      <div className="content-section">
-        {activeSection === 'branches' && (
-          <BranchesSection 
-            ownerId={ownerId} 
-            onViewStaff={handleViewStaff} 
-          />
-        )}
-        
-        {activeSection === 'staff' && (
-          <StaffSection 
-            ownerId={ownerId}
-            selectedBranch={selectedBranch}
-            onSelectBranch={handleSelectBranch}
-            onViewReports={handleViewReports}
-            onViewOwnerData={handleViewOwnerData}
-          />
-        )}
-        
-        {activeSection === 'reports' && (
-          <ReportsSection 
-            selectedUser={selectedUser}
-            onBackToStaff={handleBackToStaff}
-            viewMode={viewMode}
-          />
-        )}
-        
-        {activeSection === 'ownerData' && selectedOwnerId && selectedDataType && (
-          <OwnerDataSection 
-            ownerId={selectedOwnerId}
-            dataType={selectedDataType}
-            onBackToStaff={handleBackToStaffFromOwnerData}
-          />
-        )}
       </div>
 
       <style jsx>{`
-        .container {
+        .dashboard-container {
           min-height: 100vh;
           background: #f8fafc;
-          padding: 1rem;
         }
 
-
-
-        .navigation-section {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(10px);
-          border-radius: 20px;
-          padding: 1.5rem;
-          margin-bottom: 2rem;
-          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
-          border: 1px solid rgba(255, 255, 255, 0.2);
+        /* Sidebar Styles */
+        .sidebar {
+          position: fixed;
+          top: 0;
+          left: -80px;
+          width: 80px;
+          height: 100vh;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          transition: left 0.3s ease;
+          z-index: 1000;
+          box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
         }
 
-        .nav-tabs {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 1rem;
+        .sidebar.open {
+          left: 0;
         }
 
-        .nav-tab {
+        .sidebar-header {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 15px 10px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .user-info {
+          text-align: center;
+          margin-bottom: 10px;
+        }
+
+        .user-name {
+          font-size: 10px;
+          font-weight: 600;
+          margin: 0 0 2px 0;
+          line-height: 1.2;
+        }
+
+        .user-id {
+          font-size: 8px;
+          opacity: 0.8;
+          margin: 0;
+          line-height: 1.2;
+        }
+
+        .close-sidebar-btn {
+          background: rgba(255, 255, 255, 0.1);
+          border: none;
+          color: white;
+          padding: 6px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+          font-size: 10px;
+        }
+
+        .close-sidebar-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+
+        .sidebar-content {
+          padding: 10px 5px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .sidebar-button {
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          padding: 1.5rem 1rem;
-          border-radius: 16px;
-          font-weight: 600;
-          font-size: 0.875rem;
+          width: 100%;
+          padding: 8px 4px;
+          background: rgba(255, 255, 255, 0.1);
+          border: none;
+          color: white;
+          border-radius: 8px;
+          font-weight: 500;
           cursor: pointer;
-          transition: all 0.3s ease;
-          border: 2px solid transparent;
-          background: rgba(255, 255, 255, 0.8);
-          color: #64748b;
-          min-height: 100px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          transition: all 0.2s ease;
+          text-decoration: none;
+          font-size: 8px;
+          min-height: 50px;
         }
 
-        .nav-tab:hover {
-          background: rgba(102, 126, 234, 0.1);
-          color: #667eea;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(102, 126, 234, 0.15);
-        }
-
-        .nav-tab.active {
-          background: linear-gradient(135deg, #667eea, #764ba2);
-          color: white;
-          box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
-          border-color: rgba(255, 255, 255, 0.2);
+        .sidebar-button:hover {
+          background: rgba(255, 255, 255, 0.2);
           transform: translateY(-2px);
         }
 
-        .nav-tab:hover {
-          background: rgba(102, 126, 234, 0.1);
-          color: #667eea;
+        .sidebar-button.active {
+          background: rgba(255, 255, 255, 0.25);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         }
 
-        .nav-tab.active {
-          background: linear-gradient(135deg, #667eea, #764ba2);
-          color: white;
-          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        .sidebar-button.register {
+          background: rgba(34, 197, 94, 0.8);
         }
 
-        .logout-section {
-          display: flex;
-          justify-content: flex-end;
-          margin-top: 1rem;
-          padding-top: 1rem;
-          border-top: 1px solid rgba(0, 0, 0, 0.1);
+        .sidebar-button.register:hover {
+          background: rgba(34, 197, 94, 1);
         }
 
-        .logout-button {
+        .sidebar-button.logout {
+          margin-top: auto;
+          background: rgba(239, 68, 68, 0.8);
+        }
+
+        .sidebar-button.logout:hover {
+          background: rgba(239, 68, 68, 1);
+        }
+
+        /* Main Content */
+        .main-content {
+          flex: 1;
+          margin-left: 0;
+          transition: margin-left 0.3s ease;
+          min-height: 100vh;
+          padding: 20px;
+        }
+
+        .main-content.sidebar-open {
+          margin-left: 80px;
+        }
+
+        /* Top Bar */
+        .top-bar {
           display: flex;
           align-items: center;
-          padding: 0.75rem 1.5rem;
-          background: linear-gradient(135deg, #ef4444, #dc2626);
+          gap: 16px;
+          margin-bottom: 24px;
+          padding: 16px 24px;
+          background: white;
+          border-radius: 16px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .menu-button {
+          background: linear-gradient(45deg, rgb(16, 137, 211) 0%, rgb(18, 177, 209) 100%);
           color: white;
           border: none;
+          padding: 12px;
           border-radius: 12px;
-          font-weight: 600;
-          font-size: 0.875rem;
           cursor: pointer;
-          transition: all 0.3s ease;
-          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
 
-        .logout-button:hover {
-          background: linear-gradient(135deg, #dc2626, #b91c1c);
-          transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(239, 68, 68, 0.4);
+        .menu-button:hover {
+          transform: scale(1.05);
+          box-shadow: 0 4px 12px rgba(16, 137, 211, 0.3);
         }
 
-        .logout-button:active {
-          transform: translateY(0);
+        .top-bar-info {
+          flex: 1;
         }
 
+        .welcome-text {
+          font-size: 16px;
+          font-weight: 600;
+          color: #1e293b;
+          margin: 0 0 4px 0;
+        }
 
+        .user-id-text {
+          font-size: 14px;
+          color: #64748b;
+          margin: 0;
+        }
 
-        .content-section {
+        .content-container {
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(10px);
           border-radius: 20px;
           padding: 2rem;
           box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
           border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+
+
+        .content-section {
+          background: transparent;
+          padding: 0;
+          box-shadow: none;
+          border: none;
         }
 
         .loading-state {
@@ -330,36 +474,42 @@ export default function OwnerDashboard() {
         }
 
         @media (max-width: 768px) {
-          .container {
+          .dashboard-container {
             padding: 0.5rem;
           }
 
-
-
-          .nav-tabs {
-            grid-template-columns: repeat(3, 1fr);
-            gap: 0.5rem;
+          .main-content {
+            padding: 10px;
           }
 
-          .nav-tab {
-            min-height: 70px;
-            padding: 0.75rem 0.5rem;
-            font-size: 0.75rem;
+          .top-bar {
+            padding: 12px 16px;
+            margin-bottom: 16px;
           }
 
-          .section-header {
-            flex-direction: column;
-            gap: 1rem;
-            align-items: stretch;
+          .welcome-text {
+            font-size: 14px;
           }
 
-          .breadcrumb {
-            flex-wrap: wrap;
-            justify-content: center;
+          .user-id-text {
+            font-size: 12px;
           }
 
-          .content-section {
+          .content-container {
             padding: 1.5rem;
+          }
+
+          .sidebar {
+            width: 70px;
+            left: -70px;
+          }
+
+          .sidebar.open {
+            left: 0;
+          }
+
+          .main-content.sidebar-open {
+            margin-left: 70px;
           }
         }
       `}</style>
