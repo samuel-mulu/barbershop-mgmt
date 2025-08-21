@@ -1230,14 +1230,14 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                           Payment Proof (Required)
                         </label>
                         <p className="image-upload-hint">
-                          Please upload a screenshot or photo of your mobile banking payment confirmation
+                          Please upload a screenshot or photo of your mobile banking payment confirmation. You can take a new photo or select an existing image from your device.
                         </p>
                         <ImageUpload
                           onImageUpload={setPaymentImageUrl}
                           onImageRemove={() => setPaymentImageUrl("")}
                           currentImageUrl={paymentImageUrl}
                           disabled={loading}
-                          cameraOnly={true} // Force camera-only mode for mobile banking
+                          cameraOnly={false} // Allow both camera and device upload
                         />
                       </div>
                     )}
