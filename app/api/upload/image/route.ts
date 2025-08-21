@@ -16,18 +16,11 @@ export async function POST(request: NextRequest) {
     // Validate Cloudinary configuration
     if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
       console.error('❌ Missing Cloudinary environment variables');
-      console.error('CLOUDINARY_CLOUD_NAME:', process.env.CLOUDINARY_CLOUD_NAME ? 'SET' : 'MISSING');
-      console.error('CLOUDINARY_API_KEY:', process.env.CLOUDINARY_API_KEY ? 'SET' : 'MISSING');
-      console.error('CLOUDINARY_API_SECRET:', process.env.CLOUDINARY_API_SECRET ? 'SET' : 'MISSING');
       return NextResponse.json(
         { error: 'Cloudinary configuration is missing. Please check environment variables.' },
         { status: 500 }
       );
     }
-
-    // Log successful configuration
-    console.log('✅ Cloudinary configuration loaded successfully');
-    console.log('Cloud Name:', process.env.CLOUDINARY_CLOUD_NAME);
 
     // Verify authentication
     const authResult = await verifyToken(request);

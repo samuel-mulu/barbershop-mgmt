@@ -137,13 +137,59 @@ export default function ImageUpload({
     }
   };
 
+  const handleFileUpload = () => {
+    // Check if we're on a mobile device
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    if (isMobile && cameraOnly) {
+      // For mobile devices in camera-only mode, use device camera for upload too
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.capture = 'environment'; // Force rear camera on mobile
+      input.style.display = 'none';
+      
+      input.onchange = (event) => {
+        const file = (event.target as HTMLInputElement).files?.[0];
+        if (file) {
+          handleFileSelect(file);
+        }
+        document.body.removeChild(input);
+      };
+      
+      document.body.appendChild(input);
+      input.click();
+    } else if (isMobile && !cameraOnly) {
+      // For mobile devices in normal mode, allow gallery selection
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      // Don't set capture attribute to allow gallery selection
+      input.style.display = 'none';
+      
+      input.onchange = (event) => {
+        const file = (event.target as HTMLInputElement).files?.[0];
+        if (file) {
+          handleFileSelect(file);
+        }
+        document.body.removeChild(input);
+      };
+      
+      document.body.appendChild(input);
+      input.click();
+    } else {
+      // For desktop, use regular file input
+      fileInputRef.current?.click();
+    }
+  };
+
   const startCamera = async () => {
     try {
       // Check if we're on a mobile device
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       
-      if (isMobile && cameraOnly) {
-        // For mobile devices in camera-only mode, use the device camera app
+      if (isMobile) {
+        // For mobile devices, always use the device camera app
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
@@ -163,7 +209,7 @@ export default function ImageUpload({
         return;
       }
       
-      // For desktop or when not in camera-only mode, use web camera
+      // For desktop, use web camera
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
@@ -253,8 +299,8 @@ export default function ImageUpload({
       {/* Upload Interface */}
       {!currentImageUrl && !showCamera && (
         <div
-          onDragOver={cameraOnly ? undefined : handleDragOver}
-          onDrop={cameraOnly ? undefined : handleDrop}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
           className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
             disabled 
               ? 'border-gray-300 bg-gray-50' 
@@ -265,17 +311,27 @@ export default function ImageUpload({
         >
           <div className="space-y-4">
                          {cameraOnly ? (
-               // Camera-only mode for mobile banking
+               // Camera-only mode for mobile banking with both options
                <div className="space-y-4">
-                 <div className="flex justify-center">
+                 <div className="flex justify-center space-x-4">
                    <button
                      type="button"
                      onClick={startCamera}
                      disabled={disabled || isUploading}
-                     className="flex items-center space-x-2 px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 text-lg font-semibold"
+                     className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 font-semibold"
                    >
-                     <Camera className="w-5 h-5" />
-                     <span>📱 Open Phone Camera</span>
+                     <Camera className="w-4 h-4" />
+                     <span>📱 Camera</span>
+                   </button>
+                   
+                   <button
+                     type="button"
+                     onClick={handleFileUpload}
+                     disabled={disabled || isUploading}
+                     className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 font-semibold"
+                   >
+                     <Upload className="w-4 h-4" />
+                     <span>📁 Upload</span>
                    </button>
                  </div>
                  
@@ -284,10 +340,13 @@ export default function ImageUpload({
                      📸 Mobile Banking Payment Proof Required
                    </p>
                    <p className="text-xs text-green-600">
-                     Opens your phone's camera app to capture payment confirmation
+                     Both options open your phone camera for payment confirmation
                    </p>
                    <p className="text-xs text-gray-500">
-                     Uses device camera app, not website camera
+                     Camera: Direct capture, Upload: Camera with gallery option
+                   </p>
+                   <p className="text-xs text-gray-400">
+                     You can also drag and drop an image here
                    </p>
                  </div>
                </div>
@@ -297,12 +356,12 @@ export default function ImageUpload({
                 <div className="flex justify-center space-x-4">
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={handleFileUpload}
                     disabled={disabled || isUploading}
                     className="flex items-center space-x-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
                   >
                     <Upload className="w-4 h-4" />
-                    <span>Choose File</span>
+                    <span>📁 Choose File</span>
                   </button>
                   
                   <button
@@ -312,19 +371,19 @@ export default function ImageUpload({
                     className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
                   >
                     <Camera className="w-4 h-4" />
-                    <span>{/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? 'Phone Camera' : 'Camera'}</span>
+                    <span>{/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? '📱 Phone Camera' : '📸 Camera'}</span>
                   </button>
                 </div>
                 
                 <p className="text-sm text-gray-600">
-                  Drag and drop an image here, or click to select
+                  Drag and drop an image here, or click to select from your device
                 </p>
                 <p className="text-xs text-gray-500">
                   Any image format and size accepted
                 </p>
                 {/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && (
                   <p className="text-xs text-blue-600">
-                    📱 Camera button opens your phone's camera app
+                    📱 Choose File: Select from gallery, Camera: Take new photo
                   </p>
                 )}
               </>
@@ -363,6 +422,9 @@ export default function ImageUpload({
                     ? 'Using your phone camera app to capture payment confirmation'
                     : 'Position your payment confirmation screen in the camera view'
                   }
+                </p>
+                <p className="text-xs text-green-600 mt-1">
+                  You can also upload existing images from your device
                 </p>
               </div>
             )}
