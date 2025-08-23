@@ -409,8 +409,6 @@ export class DatabaseService {
       throw new Error('Admin service operations array not found');
     }
 
-
-
     // Find operation by ID or by matching properties if no ID exists
     let operationIndex = -1;
     
@@ -448,27 +446,69 @@ export class DatabaseService {
       throw new Error('Admin service operation not found');
     }
 
+    // Store the original operation for worker updates
+    const originalOperation = user.adminServiceOperations[operationIndex];
+
     // Ensure the operation has an _id field
     if (!user.adminServiceOperations[operationIndex]._id) {
       user.adminServiceOperations[operationIndex]._id = new mongoose.Types.ObjectId();
     }
 
-    // Remove originalOperation from updateData before saving
-    const { originalOperation, ...cleanUpdateData } = updateData;
+    // Remove originalOperation and convertToNewStructure from updateData before saving
+    const { originalOperation: updateOriginalOperation, convertToNewStructure, ...cleanUpdateData } = updateData;
     
-
+    console.log("🔧 [DB-SERVICE] Updating admin service operation:", {
+      operationIndex,
+      originalOperation: user.adminServiceOperations[operationIndex],
+      newData: cleanUpdateData,
+      convertToNewStructure
+    });
     
-
-    
-    user.adminServiceOperations[operationIndex] = {
-      ...user.adminServiceOperations[operationIndex],
-      ...cleanUpdateData,
-      updatedAt: new Date()
-    };
-    
-
-    
-
+    // If converting to new structure, ensure we have the proper format
+    if (convertToNewStructure) {
+      console.log("🔧 [DB-SERVICE] Converting operation to new structure:", {
+        operationIndex,
+        cleanUpdateData
+      });
+      
+      // Create the new structure operation
+      const newStructureOperation = {
+        _id: user.adminServiceOperations[operationIndex]._id || new mongoose.Types.ObjectId(),
+        name: cleanUpdateData.name,
+        totalPrice: cleanUpdateData.totalPrice,
+        workers: cleanUpdateData.workers,
+        status: user.adminServiceOperations[operationIndex].status || 'pending',
+        createdAt: user.adminServiceOperations[operationIndex].createdAt || new Date(),
+        by: cleanUpdateData.by,
+        paymentImageUrl: cleanUpdateData.paymentImageUrl,
+        updatedAt: new Date()
+      };
+      
+      console.log("🔧 [DB-SERVICE] New structure operation:", newStructureOperation);
+      
+      // Replace the operation in the array
+      user.adminServiceOperations[operationIndex] = newStructureOperation as any;
+      
+      // Mark the array as modified
+      user.markModified('adminServiceOperations');
+      
+      // Save the user
+      await user.save();
+      
+      console.log("🔧 [DB-SERVICE] Operation converted successfully");
+      
+      // Handle worker service operations updates
+      await this.handleWorkerServiceOperationsUpdate(originalOperation, newStructureOperation);
+      
+      return newStructureOperation;
+    } else {
+      // Regular update (old structure) - use any type to avoid TypeScript issues
+      (user.adminServiceOperations[operationIndex] as any) = {
+        ...user.adminServiceOperations[operationIndex],
+        ...cleanUpdateData,
+        updatedAt: new Date()
+      };
+    }
 
     // Mark the adminServiceOperations array as modified to ensure it gets saved
     user.markModified('adminServiceOperations');
@@ -476,7 +516,166 @@ export class DatabaseService {
     // Force save and verify the data was saved
     await user.save();
     
+    // Handle worker service operations updates
+    await this.handleWorkerServiceOperationsUpdate(originalOperation, user.adminServiceOperations[operationIndex]);
+    
     return user.adminServiceOperations[operationIndex];
+  }
+
+  // New method to handle worker service operations updates
+  static async handleWorkerServiceOperationsUpdate(originalOperation: any, updatedOperation: any) {
+    console.log("🔧 [DB-SERVICE] Handling worker service operations update:", {
+      originalOperation,
+      updatedOperation
+    });
+
+    try {
+      // If this is a new structure operation (has workers array)
+      if (updatedOperation.workers && updatedOperation.workers.length > 0) {
+        console.log("🔧 [DB-SERVICE] Processing new structure operation with workers:", updatedOperation.workers);
+        
+        // Handle each worker in the workers array
+        for (const worker of updatedOperation.workers) {
+          await this.updateWorkerServiceOperation(worker, updatedOperation, originalOperation);
+        }
+      } else {
+        // Handle old structure operation (single worker)
+        console.log("🔧 [DB-SERVICE] Processing old structure operation");
+        
+        const workerData = {
+          workerId: updatedOperation.workerId,
+          workerName: updatedOperation.workerName,
+          workerRole: updatedOperation.workerRole,
+          price: updatedOperation.price || updatedOperation.totalPrice
+        };
+        
+        await this.updateWorkerServiceOperation(workerData, updatedOperation, originalOperation);
+      }
+    } catch (error) {
+      console.error("🔧 [DB-SERVICE] Error handling worker service operations update:", error);
+      // Don't throw error here to avoid breaking the main update
+    }
+  }
+
+  // Helper method to update individual worker service operations
+  static async updateWorkerServiceOperation(workerData: any, updatedOperation: any, originalOperation: any) {
+    console.log("🔧 [DB-SERVICE] Updating worker service operation:", {
+      workerData,
+      updatedOperation,
+      originalOperation
+    });
+
+    if (!workerData.workerId) {
+      console.log("🔧 [DB-SERVICE] No worker ID provided, skipping worker update");
+      return;
+    }
+
+    // Find the worker user
+    const workerUser = await User.findById(workerData.workerId);
+    if (!workerUser) {
+      console.log("🔧 [DB-SERVICE] Worker user not found:", workerData.workerId);
+      return;
+    }
+
+    if (!workerUser.serviceOperations) {
+      workerUser.serviceOperations = [];
+    }
+
+    // Check if role has changed (handle both old and new structure)
+    const originalRole = originalOperation.workerRole || (originalOperation.workers && originalOperation.workers[0]?.workerRole);
+    const originalWorkerId = originalOperation.workerId || (originalOperation.workers && originalOperation.workers[0]?.workerId);
+    
+    const roleChanged = originalRole !== workerData.workerRole;
+    const workerIdChanged = originalWorkerId !== workerData.workerId;
+    
+    console.log("🔧 [DB-SERVICE] Role/ID change check:", {
+      roleChanged,
+      workerIdChanged,
+      originalRole: originalOperation.workerRole,
+      newRole: workerData.workerRole,
+      originalWorkerId: originalOperation.workerId,
+      newWorkerId: workerData.workerId
+    });
+
+    // If role or worker ID changed, remove from original worker's serviceOperations
+    if ((roleChanged || workerIdChanged) && originalWorkerId) {
+      const originalWorker = await User.findById(originalWorkerId);
+      if (originalWorker && originalWorker.serviceOperations) {
+        const originalWorkerOperationIndex = (originalWorker.serviceOperations as any[]).findIndex(op => 
+          op._id && op._id.toString() === originalOperation._id?.toString()
+        );
+        
+        if (originalWorkerOperationIndex !== -1) {
+          console.log("🔧 [DB-SERVICE] Removing operation from original worker:", {
+            workerId: originalWorkerId,
+            operationIndex: originalWorkerOperationIndex
+          });
+          
+          (originalWorker.serviceOperations as any[]).splice(originalWorkerOperationIndex, 1);
+          originalWorker.markModified('serviceOperations');
+          await originalWorker.save();
+        }
+      }
+    }
+
+    // Find the operation in the current worker's serviceOperations
+    let operationIndex = (workerUser.serviceOperations as any[]).findIndex(op => 
+      op._id && op._id.toString() === updatedOperation._id?.toString()
+    );
+
+    // If not found by ID, try to find by matching properties
+    if (operationIndex === -1) {
+      operationIndex = (workerUser.serviceOperations as any[]).findIndex(op => {
+        return op.name === originalOperation.name &&
+               op.price === originalOperation.price &&
+               (op.workerName === originalOperation.workerName || op.workerName === (originalOperation.workers && originalOperation.workers[0]?.workerName)) &&
+               (op.workerRole === originalOperation.workerRole || op.workerRole === (originalOperation.workers && originalOperation.workers[0]?.workerRole)) &&
+               op.by === originalOperation.by;
+      });
+    }
+
+    // Create the worker operation data
+    const workerOperationData = {
+      _id: updatedOperation._id || new mongoose.Types.ObjectId(),
+      name: updatedOperation.name,
+      price: workerData.price,
+      workerName: workerData.workerName,
+      workerRole: workerData.workerRole,
+      workerId: workerData.workerId,
+      status: updatedOperation.status || 'pending',
+      createdAt: updatedOperation.createdAt || new Date(),
+      by: updatedOperation.by,
+      paymentImageUrl: updatedOperation.paymentImageUrl,
+      updatedAt: new Date()
+    };
+
+    if (operationIndex !== -1) {
+      // Update existing operation
+      console.log("🔧 [DB-SERVICE] Updating existing worker operation:", {
+        workerId: workerData.workerId,
+        operationIndex
+      });
+      
+      workerUser.serviceOperations[operationIndex] = workerOperationData as any;
+    } else {
+      // Add new operation
+      console.log("🔧 [DB-SERVICE] Adding new worker operation:", {
+        workerId: workerData.workerId
+      });
+      
+      workerUser.serviceOperations.push(workerOperationData as any);
+    }
+
+    // Mark the serviceOperations array as modified
+    workerUser.markModified('serviceOperations');
+    
+    // Save the worker user
+    await workerUser.save();
+    
+    console.log("🔧 [DB-SERVICE] Worker service operation updated successfully:", {
+      workerId: workerData.workerId,
+      operationId: workerOperationData._id
+    });
   }
 
   static async deleteAdminServiceOperation(adminId: string, operationId: string) {

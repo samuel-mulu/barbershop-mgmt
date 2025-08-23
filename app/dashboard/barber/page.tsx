@@ -1,15 +1,19 @@
 "use client";
 import useSWR from "swr";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { getUserFromLocalStorage } from "@/utils/auth";
 import EthiopianDate from "@/components/EthiopianDate";
+import PaymentConfirmationCard from "@/components/PaymentConfirmationCard";
+import Pagination from "@/components/Pagination";
 import { 
   Scissors, 
   Clock, 
   DollarSign, 
   AlertCircle,
   RefreshCw,
-  LogOut
+  LogOut,
+  Menu,
+  X
 } from "lucide-react";
 
 const fetcher = (url: string) => {
@@ -66,10 +70,63 @@ export default function BarberDashboard() {
     fetcher
   );
 
-  // Ensure serviceOperations is always an array and filter to only pending operations
-  const safeServiceOperations = Array.isArray(serviceOperations) ? serviceOperations.filter(op => op.status === "pending") : [];
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  // Sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  
+  // Payment confirmation display state
+  const [showPaymentConfirmation, setShowPaymentConfirmation] = useState<boolean>(false);
 
-  // Calculate totals
+  // Ensure serviceOperations is always an array and filter to only pending operations (both pending and pending_to_confirm)
+  const safeServiceOperations = Array.isArray(serviceOperations) ? serviceOperations.filter(op => 
+    op.status === "pending" || op.status === "pending_to_confirm"
+  ) : [];
+
+  // Sort operations by newest first
+  const sortedOperations = useMemo(() => {
+    return [...safeServiceOperations].sort((a, b) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [safeServiceOperations]);
+
+  // Get paginated data
+  const getPaginatedOperations = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return sortedOperations.slice(startIndex, endIndex);
+  }, [sortedOperations, currentPage, itemsPerPage]);
+
+  // Calculate pagination info
+  const getPaginationInfo = useMemo(() => {
+    const totalItems = sortedOperations.length;
+    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const startItem = (currentPage - 1) * itemsPerPage + 1;
+    const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+
+    return {
+      totalItems,
+      totalPages,
+      startItem,
+      endItem,
+      currentPage
+    };
+  }, [sortedOperations, currentPage, itemsPerPage]);
+
+  // Handle page change
+  const handlePageChange = useCallback((page: number) => {
+    setCurrentPage(page);
+  }, []);
+
+  // Handle items per page change
+  const handleItemsPerPageChange = useCallback((limit: number) => {
+    setItemsPerPage(limit);
+    setCurrentPage(1); // Reset to first page when changing limit
+  }, []);
+
+  // Calculate totals - only count operations that are NOT finished
   const pendingCount = safeServiceOperations.length;
   const totalEarnings = safeServiceOperations.reduce((total, op) => total + op.price, 0);
 
@@ -90,52 +147,107 @@ export default function BarberDashboard() {
     window.location.href = "/login";
   };
 
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
+
+  const togglePaymentConfirmation = () => {
+    setShowPaymentConfirmation(!showPaymentConfirmation);
+  };
+
   return (
-    <div className="container">
-      {/* Header Section */}
-      <div className="header-section">
-        <div className="header-content">
-          <div className="header-icon">
-            <Scissors className="w-8 h-8" />
+    <div className="dashboard-container">
+      <div className="flex">
+        {/* Sidebar */}
+        <div className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+          <div className="sidebar-header">
+            <div className="user-info">
+              <p className="user-name">Welcome back, {user.name}</p>
+              <p className="branch-name">Branch: {branchName || branchId}</p>
+            </div>
+            <button
+              onClick={toggleSidebar}
+              className="close-sidebar-btn"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <div>
-            <p className="subtitle">Welcome back, {user.name}</p>
-            <p className="text-xs text-slate-500">Branch: {branchName || branchId}</p>
+          
+          <div className="sidebar-content">
+            {/* Payment Confirmation Button in Sidebar */}
+            {user._id && (
+              <button
+                onClick={() => {
+                  togglePaymentConfirmation();
+                  setSidebarOpen(false);
+                }}
+                className="sidebar-button payment-confirmation"
+              >
+                <DollarSign className="w-4 h-4 mb-1" />
+                <span>Payment Confirmations</span>
+              </button>
+            )}
+            
+            <button
+              onClick={() => {
+                handleLogout();
+                setSidebarOpen(false);
+              }}
+              className="sidebar-button logout"
+            >
+              <LogOut className="w-4 h-4 mb-1" />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
-        
-        {/* Logout Button */}
-        <button
-          onClick={handleLogout}
-          className="logout-button"
-        >
-          <LogOut className="w-4 h-4 mr-2" />
-          Logout
-        </button>
-      </div>
 
-        {/* Summary Cards */}
-      <div className="summary-grid">
-        <div className="summary-card">
-          <div className="summary-icon pending">
-            <Clock className="w-6 h-6" />
+        {/* Main Content */}
+        <div className={`main-content ${sidebarOpen ? 'sidebar-open' : ''}`}>
+          {/* Top Bar */}
+          <div className="top-bar">
+            <button
+              onClick={toggleSidebar}
+              className="menu-button"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
+            <div className="top-bar-info">
+              <p className="welcome-text">Welcome back, {user.name}</p>
+              <p className="branch-text">Branch: {branchName || branchId}</p>
+            </div>
           </div>
-          <div>
-            <h3 className="summary-title">ዘይተኸፈለ ስራሕ</h3>
-            <p className="summary-value pending">{pendingCount}</p>
-          </div>
-        </div>
 
-        <div className="summary-card">
-          <div className="summary-icon earnings">
-            <DollarSign className="w-6 h-6" />
-          </div>
-          <div>
-            <h3 className="summary-title">ዘይተኸፈለ ብር</h3>
-            <p className="summary-value earnings">{totalEarnings} ብር</p>
-          </div>
-          </div>
-        </div>
+                  {/* Content Container */}
+          <div className="content-container">
+            {/* Payment Confirmation Card - Display when button is clicked */}
+            {showPaymentConfirmation && user._id && (
+              <div className="payment-confirmation-section">
+                <PaymentConfirmationCard userId={user._id} userRole="barber" />
+              </div>
+            )}
+            
+            {/* Summary Cards */}
+            <div className="summary-grid">
+              <div className="summary-card">
+                <div className="summary-icon pending">
+                  <Clock className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="summary-title">ዘይተኸፈለ ስራሕ</h3>
+                  <p className="summary-value pending">{pendingCount}</p>
+                </div>
+              </div>
+
+              <div className="summary-card">
+                <div className="summary-icon earnings">
+                  <DollarSign className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="summary-title">ዘይተኸፈለ ብር</h3>
+                  <p className="summary-value earnings">{totalEarnings} ብር</p>
+                </div>
+              </div>
+            </div>
 
         {/* Services Section */}
       <div className="content-section">
@@ -188,14 +300,16 @@ export default function BarberDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                {safeServiceOperations.map((operation: ServiceOperation, index: number) => {
+                {getPaginatedOperations.map((operation: ServiceOperation, index: number) => {
                     // Get current share
                     const barberShare = operation.price; // This is already 50% of original
+                    const paginationInfo = getPaginationInfo;
+                    const rowNumber = paginationInfo.startItem + index;
                     
                     return (
                     <tr key={operation._id}>
                       <td className="text-center font-medium text-slate-600">
-                        #{index + 1}
+                        #{rowNumber}
                       </td>
                       <td className="font-medium">
                           {operation.name}
@@ -220,11 +334,217 @@ export default function BarberDashboard() {
                   })}
                 </tbody>
               </table>
+              
+              {/* Pagination Component */}
+              {sortedOperations.length > 0 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={getPaginationInfo.totalPages}
+                  totalItems={getPaginationInfo.totalItems}
+                  itemsPerPage={itemsPerPage}
+                  onPageChange={handlePageChange}
+                  onItemsPerPageChange={handleItemsPerPageChange}
+                  showItemsPerPage={true}
+                />
+              )}
             </div>
           )}
         </div>
+      </div>
+    </div>
+  </div>
 
       <style jsx>{`
+        .dashboard-container {
+          min-height: 100vh;
+          background: #f8fafc;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+          position: fixed;
+          top: 0;
+          left: -80px;
+          width: 80px;
+          height: 100vh;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          transition: left 0.3s ease;
+          z-index: 1000;
+          box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .sidebar.open {
+          left: 0;
+        }
+
+        .sidebar-header {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          padding: 15px 10px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .user-info {
+          text-align: center;
+          margin-bottom: 10px;
+        }
+
+        .user-name {
+          font-size: 10px;
+          font-weight: 600;
+          margin: 0 0 2px 0;
+          line-height: 1.2;
+        }
+
+        .branch-name {
+          font-size: 8px;
+          opacity: 0.8;
+          margin: 0;
+          line-height: 1.2;
+        }
+
+        .close-sidebar-btn {
+          background: rgba(255, 255, 255, 0.1);
+          border: none;
+          color: white;
+          padding: 6px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: background-color 0.2s ease;
+          font-size: 10px;
+        }
+
+        .close-sidebar-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+
+        .sidebar-content {
+          padding: 10px 5px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .sidebar-payment-card {
+          margin-bottom: 10px;
+        }
+
+        .sidebar-button {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          padding: 8px 4px;
+          background: rgba(255, 255, 255, 0.1);
+          border: none;
+          color: white;
+          border-radius: 8px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          text-decoration: none;
+          font-size: 8px;
+          min-height: 50px;
+        }
+
+        .sidebar-button:hover {
+          background: rgba(255, 255, 255, 0.2);
+          transform: translateY(-2px);
+        }
+
+        .sidebar-button.active {
+          background: rgba(255, 255, 255, 0.25);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .sidebar-button.logout {
+          margin-top: auto;
+          background: rgba(239, 68, 68, 0.8);
+        }
+
+        .sidebar-button.logout:hover {
+          background: rgba(239, 68, 68, 1);
+        }
+
+        .sidebar-button.payment-confirmation {
+          background: rgba(245, 158, 11, 0.8);
+        }
+
+        .sidebar-button.payment-confirmation:hover {
+          background: rgba(245, 158, 11, 1);
+        }
+
+        .payment-confirmation-section {
+          margin-bottom: 24px;
+        }
+
+        /* Main Content */
+        .main-content {
+          flex: 1;
+          margin-left: 0;
+          transition: margin-left 0.3s ease;
+          min-height: 100vh;
+          padding: 20px;
+        }
+
+        .main-content.sidebar-open {
+          margin-left: 80px;
+        }
+
+        /* Top Bar */
+        .top-bar {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 24px;
+          padding: 16px 24px;
+          background: white;
+          border-radius: 16px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .menu-button {
+          background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          border: none;
+          padding: 12px;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .menu-button:hover {
+          transform: scale(1.05);
+          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .top-bar-info {
+          flex: 1;
+        }
+
+        .welcome-text {
+          font-size: 16px;
+          font-weight: 600;
+          color: #1e293b;
+          margin: 0 0 4px 0;
+        }
+
+        .branch-text {
+          font-size: 14px;
+          color: #64748b;
+          margin: 0;
+        }
+
+        .content-container {
+          padding: 0;
+        }
+
         .container {
           min-height: 100vh;
           background: #f8fafc;

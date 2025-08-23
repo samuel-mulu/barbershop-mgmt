@@ -2,13 +2,12 @@
 
 // Ethiopian calendar months
 const ETHIOPIAN_MONTHS = [
-  'Meskerem', 'Tikimt', 'Hidar', 'Tahsas', 'Tir', 'Yekatit',
-  'Megabit', 'Miyazya', 'Ginbot', 'Sene', 'Hamle', 'Nehasie'
+  'መስከረም', 'ጥቅምቲ', 'ሕዳር', 'ታህሳስ', 'ጥሪ', 'የካቲት', 'መጋቢት', 'ሚያዝያ', 'ግንቦት', 'ሰነ', 'ሐምለ', 'ነሐሰ', 'ጳጉሜን'
 ];
 
 // Ethiopian calendar weekdays
 const ETHIOPIAN_WEEKDAYS = [
-  'Ehud', 'Segno', 'Maksegno', 'Rob', 'Hamus', 'Arb', 'Kidame'
+  'ሰንብት', 'ሶኒ', 'ሶሉስ', 'ሮብዕ', 'ሓሙስ', 'ዓርቢ', 'ቐዳም'
 ];
 
 // Accurate Ethiopian calendar conversion
@@ -34,7 +33,7 @@ export function gregorianToEthiopian(date: Date): {
 
   // Calculate Ethiopian month and day with correct algorithm
   let ethiopianMonth = month - 8;
-  let ethiopianDay = day - 7; // Fixed offset from -10 to -7
+  let ethiopianDay = day - 6; // Fixed offset: was -7, now -6 to correct the one day difference
 
   if (ethiopianMonth <= 0) {
     ethiopianMonth += 12;
@@ -79,14 +78,24 @@ export function formatEthiopianDate(dateString: string, showWeekday: boolean = t
 // Format date to Ethiopian calendar with time
 export function formatEthiopianDateTime(dateString: string, showWeekday: boolean = true): string {
   const date = new Date(dateString);
-  const ethiopian = gregorianToEthiopian(date);
   
-  // Format time
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
-  const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  // Convert to Ethiopian timezone (UTC+3)
+  const ethiopianTime = new Date(date.getTime() + (3 * 60 * 60 * 1000)); // Add 3 hours for Ethiopian timezone
   
-  // Format: "Day Month Year, Weekday, HH:MM" or "Day Month Year, HH:MM"
+  const ethiopian = gregorianToEthiopian(ethiopianTime);
+  
+  // Format time in 12-hour format (AM/PM)
+  let hours = ethiopianTime.getUTCHours();
+  const minutes = ethiopianTime.getUTCMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  
+  // Convert to 12-hour format
+  hours = hours % 12;
+  hours = hours ? hours : 12; // 0 should be 12
+  
+  const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+  
+  // Format: "Day Month Year, Weekday, HH:MM AM/PM" or "Day Month Year, HH:MM AM/PM"
   if (showWeekday) {
     return `${ethiopian.day} ${ethiopian.monthName} ${ethiopian.year}, ${ethiopian.weekdayName}, ${timeString}`;
   } else {
@@ -104,4 +113,41 @@ export function getCurrentEthiopianDate(): {
   weekdayName: string;
 } {
   return gregorianToEthiopian(new Date());
-} 
+}
+
+// Convert time to Ethiopian timezone and format in 12-hour format
+export function formatEthiopianTime(dateString: string): string {
+  const date = new Date(dateString);
+  
+  // Convert to Ethiopian timezone (UTC+3)
+  const ethiopianTime = new Date(date.getTime() + (3 * 60 * 60 * 1000)); // Add 3 hours for Ethiopian timezone
+  
+  // Format time in 12-hour format (AM/PM)
+  let hours = ethiopianTime.getUTCHours();
+  const minutes = ethiopianTime.getUTCMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  
+  // Convert to 12-hour format
+  hours = hours % 12;
+  hours = hours ? hours : 12; // 0 should be 12
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+}
+
+// Format date to Ethiopian calendar with time (simplified version)
+export function formatEthiopianDateWithTime(dateString: string, showWeekday: boolean = false): string {
+  const date = new Date(dateString);
+  
+  // Convert to Ethiopian timezone (UTC+3)
+  const ethiopianTime = new Date(date.getTime() + (3 * 60 * 60 * 1000)); // Add 3 hours for Ethiopian timezone
+  
+  const ethiopian = gregorianToEthiopian(ethiopianTime);
+  const timeString = formatEthiopianTime(dateString);
+  
+  // Format: "Day Month Year, HH:MM AM/PM" or "Day Month Year, Weekday, HH:MM AM/PM"
+  if (showWeekday) {
+    return `${ethiopian.day} ${ethiopian.monthName} ${ethiopian.year}, ${ethiopian.weekdayName}, ${timeString}`;
+  } else {
+    return `${ethiopian.day} ${ethiopian.monthName} ${ethiopian.year}, ${timeString}`;
+  }
+}

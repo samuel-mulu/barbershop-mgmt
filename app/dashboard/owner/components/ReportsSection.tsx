@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import EthiopianDate from "@/components/EthiopianDate";
 import { gregorianToEthiopian } from "@/utils/ethiopianCalendar";
 import Modal from "@/components/ui/modal";
@@ -23,7 +23,8 @@ import {
   Phone,
   Eye,
   Download,
-  X
+  X,
+  Loader2
 } from "lucide-react";
 
 interface User {
@@ -44,22 +45,31 @@ interface User {
   }>;
   adminServiceOperations?: Array<{
     name: string;
-    price: number;
+    price?: number; // Optional for new structure
+    totalPrice?: number; // For combined operations
     status: string;
     createdAt: string;
     finishedDate?: string;
-    workerName: string;
-    workerRole: string;
-    workerId: string;
+    workerName?: string; // Optional for new structure
+    workerRole?: string; // Optional for new structure
+    workerId?: string; // Optional for new structure
     by?: 'cash' | 'mobile banking(telebirr)';
     paymentImageUrl?: string;
+    // New structure for combined operations
+    workers?: Array<{
+      workerName: string;
+      workerRole: "barber" | "washer";
+      workerId?: string;
+      price: number;
+    }>;
   }>;
 }
 
 interface ServiceOperation {
   _id?: string;
   name: string;
-  price: number;
+  price?: number; // Optional for new structure
+  totalPrice?: number; // For combined operations
   status: string;
   createdAt: string;
   finishedDate?: string;
@@ -70,6 +80,13 @@ interface ServiceOperation {
   operationIndex?: number;
   by?: 'cash' | 'mobile banking(telebirr)';
   paymentImageUrl?: string;
+  // New structure for combined operations
+  workers?: Array<{
+    workerName: string;
+    workerRole: "barber" | "washer";
+    workerId?: string;
+    price: number;
+  }>;
 }
 
 interface ReportsSectionProps {
@@ -89,6 +106,12 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
   // Payment proof preview state
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   
+  // Date filter state
+  const [dateFilter, setDateFilter] = useState<string>('');
+  
+  // Auto-refresh state (hidden polling)
+  const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
+  
   // Modal state
   const [modal, setModal] = useState<{
     isOpen: boolean;
@@ -101,6 +124,25 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
     message: "",
     type: "info"
   });
+
+  // Helper function to get the correct price for an operation
+  const getOperationPrice = (operation: ServiceOperation): number => {
+    // For admin operations, use totalPrice if available (new structure), otherwise fall back to price
+    if (selectedUser?.role === 'admin') {
+      return operation.totalPrice || operation.price || 0;
+    }
+    // For worker operations, use price
+    return operation.price || 0;
+  };
+
+  // Auto-refresh effect (hidden polling every 5 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLastRefresh(Date.now());
+    }, 5000); // 5 seconds
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Get operations based on user role
   const getOperations = (): ServiceOperation[] => {
@@ -148,10 +190,15 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
     
     // Filter only pending operations but preserve original indices and all fields
     operations.forEach((operation, originalIndex) => {
-      if (operation.status === 'pending') {
+      if (operation.status === 'pending' || operation.status === 'pending_to_confirm') {
         const date = new Date(operation.createdAt);
         const ethiopian = gregorianToEthiopian(date);
         const ethiopianDateKey = `${ethiopian.day} ${ethiopian.monthName} ${ethiopian.year}`;
+        
+        // Apply date filter if set
+        if (dateFilter && ethiopianDateKey !== dateFilter) {
+          return;
+        }
         
         if (!grouped[ethiopianDateKey]) {
           grouped[ethiopianDateKey] = [];
@@ -256,11 +303,27 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
       
       console.log('Updating operations:', operationIndices);
       
+      // Determine the correct status based on user role
+      let finalStatus = newStatus;
+      let successMessage = '';
+      
+      if (selectedUser.role === 'admin') {
+        // For admin: pending → finished (skip pending_to_confirm)
+        finalStatus = 'finished';
+        successMessage = `${selectedCount} ${selectedCount === 1 ? 'operation' : 'operations'} marked as finished successfully!`;
+      } else {
+        // For workers: pending → pending_to_confirm (existing flow)
+        finalStatus = 'pending_to_confirm';
+        successMessage = `${selectedCount} ${selectedCount === 1 ? 'operation' : 'operations'} marked as pending to confirm successfully!`;
+      }
+      
       // Single bulk update API call
       const updateData = {
         operationIndices,
-        status: newStatus,
-        finishedDate: newStatus === 'finished' ? new Date().toISOString() : undefined
+        status: finalStatus,
+        finishedDate: finalStatus === 'finished' ? new Date().toISOString() : undefined,
+        paymentConfirmedDate: finalStatus === 'payment_confirmed' ? new Date().toISOString() : undefined,
+        workerConfirmedDate: finalStatus === 'finished' ? new Date().toISOString() : undefined
       };
       
       const response = await fetch(`/api/users/${selectedUser._id}/operations/bulk-update`, {
@@ -294,11 +357,10 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
       }
       
       // Show success message with correct count
-      const operationText = selectedCount === 1 ? 'operation' : 'operations';
       setModal({
         isOpen: true,
         title: "Success",
-        message: `${selectedCount} ${operationText} marked as finished successfully!`,
+        message: successMessage,
         type: "success"
       });
       
@@ -374,6 +436,11 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
       const ethiopian = gregorianToEthiopian(date);
       const ethiopianDateKey = `${ethiopian.day} ${ethiopian.monthName} ${ethiopian.year}`;
       
+      // Apply date filter if set
+      if (dateFilter && ethiopianDateKey !== dateFilter) {
+        return;
+      }
+      
       if (!grouped[ethiopianDateKey]) {
         grouped[ethiopianDateKey] = [];
       }
@@ -431,6 +498,26 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
     setExpandedOperations(newExpanded);
   };
 
+  // Get available dates for filter dropdown
+  const getAvailableDates = (): string[] => {
+    const operations = getOperations();
+    const dates = new Set<string>();
+    
+    operations.forEach(operation => {
+      const date = new Date(operation.createdAt);
+      const ethiopian = gregorianToEthiopian(date);
+      const ethiopianDateKey = `${ethiopian.day} ${ethiopian.monthName} ${ethiopian.year}`;
+      dates.add(ethiopianDateKey);
+    });
+    
+    // Sort dates by newest first
+    return Array.from(dates).sort((a, b) => {
+      const dateA = new Date(a.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(a.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + a.split(' ')[0].padStart(2, '0'));
+      const dateB = new Date(b.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(b.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + b.split(' ')[0].padStart(2, '0'));
+      return dateB.getTime() - dateA.getTime();
+    });
+  };
+
   if (!selectedUser) {
     return (
       <div className="empty-state">
@@ -480,6 +567,7 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
   const getStatusDisplayName = (status: string) => {
     switch (status) {
       case 'pending': return 'pending(ዘይተወደኡ)';
+      case 'pending_to_confirm': return 'pending to confirm(ዝተሰረሐ ክንረጋገጽ)';
       case 'finished': return 'finished(ዝተወዱኡ)';
       default: return status;
     }
@@ -537,6 +625,23 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
         {viewMode === 'pending' ? (
           // Pending Operations View
           <div className="pending-operations">
+            {/* Date Filter */}
+            <div className="filter-controls">
+              <div className="filter-group">
+                <label className="filter-label">📅 Filter by Date:</label>
+                <select
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="">All Dates</option>
+                  {getAvailableDates().map(date => (
+                    <option key={date} value={date}>{date}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
       {selectedOperations.size > 0 && (
               <div className="bulk-actions">
                 <div className="bulk-info">
@@ -545,7 +650,7 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
             </span>
                 </div>
               <button
-                onClick={() => handleUpdateSelectedOperations('finished')}
+                onClick={() => handleUpdateSelectedOperations('pending_to_confirm')}
                 disabled={isLoading}
                   className="action-button success large"
                 >
@@ -556,8 +661,8 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                     </>
                   ) : (
                     <>
-                                          <CheckCircle className="w-5 h-5 mr-2" />
-                    Mark Selected as {getStatusDisplayName('finished')}
+                      <CheckCircle className="w-5 h-5 mr-2" />
+                      {selectedUser?.role === 'admin' ? 'Mark Selected as Finished' : 'Mark Selected as Pending to Confirm'}
                     </>
                   )}
               </button>
@@ -577,9 +682,9 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
               if (dates.length === 0) {
                 return (
                   <div className="empty-operations">
-                    <CheckCircle className="w-16 h-16 mb-4 text-green-400" />
-                    <h3>No {getStatusDisplayName('pending')} ዝተሰረሐ</h3>
-                    <p>All ዝተሰረሐ have been completed!</p>
+                                      <CheckCircle className="w-16 h-16 mb-4 text-green-400" />
+                  <h3>No Pending ዝተሰረሐ</h3>
+                  <p>All ዝተሰረሐ have been completed or pending to confirm!</p>
                   </div>
                 );
               }
@@ -593,7 +698,7 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                       selectedOperations.has(`${date}-${index}`)
                     ).length;
                     const isAllSelected = dateSelectedCount === dateOperations.length;
-                    const totalPrice = dateOperations.reduce((sum, operation) => sum + operation.price, 0);
+                    const totalPrice = dateOperations.reduce((sum, operation) => sum + getOperationPrice(operation), 0);
                   
                   return (
                       <div key={date} className="date-group">
@@ -638,20 +743,30 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                 <div key={operationKey} className="operation-card">
                                   <div className="operation-header">
                                     <div className="operation-info">
-                                      <label className="operation-select">
-                                        <input
-                                          type="checkbox"
-                                          checked={isSelected}
-                                          onChange={(e) => handleOperationSelect(operationKey, e.target.checked)}
-                                          className="checkbox"
-                                        />
-                                        <span className="checkmark"></span>
-                                      </label>
+                                      {operation.status === 'pending' ? (
+                                        <label className="operation-select">
+                                          <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={(e) => handleOperationSelect(operationKey, e.target.checked)}
+                                            className="checkbox"
+                                          />
+                                          <span className="checkmark"></span>
+                                        </label>
+                                      ) : operation.status === 'pending_to_confirm' ? (
+                                        <div className="loading-indicator">
+                                          <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                                        </div>
+                                      ) : (
+                                        <div className="status-indicator">
+                                          <CheckCircle className="w-4 h-4 text-green-500" />
+                                        </div>
+                                      )}
                                       <div className="operation-details">
                                         <h5 className="operation-name">{operation.name}</h5>
                                         <div className="operation-meta">
                                           <span className="operation-price">
-                                            {operation.price}ብር
+                                            {getOperationPrice(operation)}ብር
                                           </span>
                                           {operation.by && (
                                             <span className="payment-method-badge">
@@ -705,7 +820,7 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                             </div>
                                         <div className="detail-item">
                                           <label>Price</label>
-                                          <div>{operation.price}ብር</div>
+                                          <div>{getOperationPrice(operation)}ብር</div>
                                         </div>
                                         <div className="detail-item">
                                           <label>Created At</label>
@@ -715,11 +830,21 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                         </div>
                                         <div className="detail-item">
                                           <label>Status</label>
-                                          <div className="status pending">
-                                            <Clock className="w-3 h-3 mr-1" />
-                                            Pending
+                                          <div className={`status ${operation.status}`}>
+                                            {operation.status === 'pending' && (
+                                              <>
+                                                <Clock className="w-3 h-3 mr-1" />
+                                                Pending
+                                              </>
+                                            )}
+                                            {operation.status === 'pending_to_confirm' && (
+                                              <>
+                                                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                                Pending to Confirm
+                                              </>
+                                            )}
+                                          </div>
                                         </div>
-                                            </div>
                                         {operation.by && (
                                           <div className="detail-item">
                                             <label>Payment Method</label>
@@ -746,6 +871,22 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
         ) : (
           // Finished Operations View
           <div className="finished-operations">
+            {/* Date Filter */}
+            <div className="filter-controls">
+              <div className="filter-group">
+                <label className="filter-label">📅 Filter by Date:</label>
+                <select
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="">All Dates</option>
+                  {getAvailableDates().map(date => (
+                    <option key={date} value={date}>{date}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
         
         {(() => {
           const finishedOperations = getFinishedOperations();
@@ -772,7 +913,7 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                   {finishedDates.map((date, cardIndex) => {
                     const dateOperations = groupedFinished[date];
                     const isExpanded = expandedFinishedCards.has(cardIndex);
-                    const totalValue = dateOperations.reduce((sum, op) => sum + op.price, 0);
+                    const totalValue = dateOperations.reduce((sum, op) => sum + getOperationPrice(op), 0);
                     const avgTime = dateOperations.reduce((sum, op) => {
                       if (op.finishedDate) {
                         return sum + (new Date(op.finishedDate).getTime() - new Date(op.createdAt).getTime());
@@ -818,7 +959,7 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                 <div className="operation-info">
                                   <h5 className="operation-name">{operation.name}</h5>
                                   <div className="operation-meta">
-                                    <span className="operation-price">{operation.price}ብር</span>
+                                    <span className="operation-price">{getOperationPrice(operation)}ብር</span>
                                       {operation.by && (
                                         <span className="payment-method-badge">
                                           {getPaymentMethodDisplay(operation.by)}
@@ -1063,6 +1204,53 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
 
         .reports-content {
           space-y: 2rem;
+        }
+
+        .filter-controls {
+          display: flex;
+          justify-content: flex-start;
+          align-items: center;
+          margin-bottom: 1.5rem;
+          padding: 1rem 1.5rem;
+          background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+          border-radius: 12px;
+          border: 1px solid #cbd5e1;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        .filter-group {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+
+        .filter-label {
+          font-size: 0.875rem;
+          font-weight: 600;
+          color: #475569;
+          white-space: nowrap;
+        }
+
+        .filter-select {
+          background: white;
+          border: 1px solid #d1d5db;
+          border-radius: 8px;
+          padding: 0.5rem 0.75rem;
+          font-size: 0.875rem;
+          color: #374151;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          min-width: 200px;
+        }
+
+        .filter-select:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .filter-select:hover {
+          border-color: #9ca3af;
         }
 
         .view-header {
@@ -1537,6 +1725,28 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
           color: #f59e0b;
         }
 
+        .status.pending_to_confirm {
+          color: #3b82f6;
+        }
+
+
+
+        .loading-indicator {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 16px;
+          height: 16px;
+        }
+
+        .status-indicator {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 16px;
+          height: 16px;
+        }
+
         .finished-list {
           space-y: 1.5rem;
         }
@@ -1685,6 +1895,16 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
           .user-stats {
             flex-direction: column;
             gap: 1rem;
+          }
+
+          .filter-controls {
+            flex-direction: column;
+            gap: 1rem;
+            align-items: stretch;
+          }
+
+          .filter-group {
+            justify-content: space-between;
           }
 
           .date-header {

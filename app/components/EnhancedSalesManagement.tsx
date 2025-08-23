@@ -263,8 +263,10 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
          // For edit mode, validate against the restored quantity
          if (isEditMode && originalSaleData) {
            // The availableQuantity should already be correct after restoration
-           if (productSaleData.soldQuantity > productSaleData.availableQuantity) {
-             alert(`Insufficient quantity. Available: ${productSaleData.availableQuantity}, Requested: ${productSaleData.soldQuantity}`);
+           // We need to check if the new quantity is valid
+           const maxAllowedQuantity = productSaleData.availableQuantity;
+           if (productSaleData.soldQuantity > maxAllowedQuantity) {
+             alert(`Insufficient quantity. Available: ${maxAllowedQuantity}, Requested: ${productSaleData.soldQuantity}`);
              setLoading(false);
              return;
            }
@@ -273,9 +275,9 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
            const currentProduct = products.find(p => p._id === productSaleData.productId);
            if (currentProduct && productSaleData.soldQuantity > currentProduct.quantity) {
              alert(`Insufficient quantity. Available: ${currentProduct.quantity}, Requested: ${productSaleData.soldQuantity}`);
-           setLoading(false);
-           return;
-         }
+             setLoading(false);
+             return;
+           }
          }
          
 
@@ -334,8 +336,20 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
       
       if (saleType === 'product_sale') {
           if (isEditMode && editingRecordId) {
-            // UPDATE: Subtract the NEW sold quantity from product
-            // Logic: Product quantity = Current quantity - New sold quantity
+            // UPDATE: Calculate the quantity to subtract from product
+            // Logic: 
+            // 1. Original quantity was restored when edit started
+            // 2. Now we need to subtract the NEW sold quantity from the product
+            // 3. The API expects the amount to subtract from product quantity
+            
+            const quantityToSubtract = productSaleData.soldQuantity;
+            
+            console.log('🔧 Edit Mode Quantity Calculation:', {
+              originalSold: originalSaleData!.soldQuantity,
+              newSold: productSaleData.soldQuantity,
+              quantityToSubtract: quantityToSubtract,
+              currentAvailable: productSaleData.availableQuantity
+            });
             
             // Update existing product sale
             const updateData = {
@@ -343,7 +357,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
               soldQuantity: productSaleData.soldQuantity,
               pricePerUnit: productSaleData.pricePerUnit,
               totalSoldMoney: productSaleData.soldQuantity * productSaleData.pricePerUnit,
-              quantityDifference: productSaleData.soldQuantity, // SUBTRACT (+) the new sold quantity
+              quantityDifference: quantityToSubtract, // Amount to subtract from product
               productId: productSaleData.productId,
               by: paymentMethod,
               paymentImageUrl: paymentImageUrl || undefined,
@@ -670,44 +684,44 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
         originalRecord: saleRecord
       });
       
-              // START EDIT: Add the original sold quantity back to product
-        // Logic: Product quantity = Current quantity + Original sold quantity
-        try {
-          const token = localStorage.getItem('token');
-          const restoreResponse = await fetch(`/api/products/update-quantity`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              productUpdates: [{
-                productId: product._id,
-                quantitySold: -saleRecord.soldQuantity // ADD (+) the original sold quantity back
-              }]
-            })
-          });
+      // START EDIT: Add the original sold quantity back to product
+      // Logic: Product quantity = Current quantity + Original sold quantity
+      try {
+        const token = localStorage.getItem('token');
+        const restoreResponse = await fetch(`/api/products/update-quantity`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            productUpdates: [{
+              productId: product._id,
+              quantitySold: -saleRecord.soldQuantity // ADD (+) the original sold quantity back
+            }]
+          })
+        });
 
         if (!restoreResponse.ok) {
           throw new Error('Failed to restore product quantity');
         }
           
-          // Refresh products to show updated quantities
-          await fetchProducts();
+        // Refresh products to show updated quantities
+        await fetchProducts();
         
-                 // Verify the restoration was successful
-         const updatedProducts = await fetch('/api/products', {
-           headers: { 'Authorization': `Bearer ${token}` }
-         }).then(res => res.json());
-         
-         const updatedProduct = updatedProducts.products.find((p: any) => p._id === product._id);
-         const expectedQuantity = currentProductQuantity + saleRecord.soldQuantity;
-         if (updatedProduct && updatedProduct.quantity !== expectedQuantity) {
-           alert('Warning: Quantity restoration may not have completed correctly. Please refresh and try again.');
-         }
+        // Verify the restoration was successful
+        const updatedProducts = await fetch('/api/products', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).then(res => res.json());
         
-        } catch (error) {
-          console.error('Error restoring product quantity for edit:', error);
+        const updatedProduct = updatedProducts.products.find((p: any) => p._id === product._id);
+        const expectedQuantity = currentProductQuantity + saleRecord.soldQuantity;
+        if (updatedProduct && updatedProduct.quantity !== expectedQuantity) {
+          alert('Warning: Quantity restoration may not have completed correctly. Please refresh and try again.');
+        }
+        
+      } catch (error) {
+        console.error('Error restoring product quantity for edit:', error);
         alert('Failed to restore product quantity. Please try again.');
         setIsEditMode(false);
         setEditingRecordId(null);
@@ -731,6 +745,13 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
     if (isEditMode && editingRecordType === 'product_sale' && originalSaleData?.productId) {
       try {
         const token = localStorage.getItem('token');
+        
+        console.log('🔧 Cancel Edit - Rolling back quantity:', {
+          productId: originalSaleData.productId,
+          originalSold: originalSaleData.soldQuantity,
+          action: 'Subtracting original sold quantity back'
+        });
+        
         const rollbackResponse = await fetch(`/api/products/update-quantity`, {
           method: 'POST',
           headers: {
@@ -751,6 +772,8 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
         
         // Refresh products to show updated quantities
         await fetchProducts();
+        
+        console.log('✅ Cancel Edit - Quantity rollback successful');
         
       } catch (error) {
         console.error('Error rolling back product quantity:', error);
@@ -1137,9 +1160,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                           required
                         />
                         <p className="field-hint">
-                          Available: {isEditMode && originalSaleData 
-                            ? productSaleData.availableQuantity + originalSaleData.soldQuantity 
-                            : productSaleData.availableQuantity}
+                          Available: {productSaleData.availableQuantity}
                         </p>
                       </div>
                       

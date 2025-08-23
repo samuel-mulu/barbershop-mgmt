@@ -54,6 +54,9 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
   // Offline functionality
   const { isOffline, pendingCount, queueProduct } = useOfflineQueue();
 
+  // Polling for real-time updates
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+
   const fetchProducts = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -78,6 +81,26 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
   useEffect(() => {
     if (showHistory) {
       fetchProducts();
+      
+      // Start polling every 5 seconds when history is shown
+      const interval = setInterval(() => {
+        fetchProducts();
+      }, 5000);
+      
+      setPollingInterval(interval);
+      
+      // Cleanup polling when component unmounts or history is hidden
+      return () => {
+        if (interval) {
+          clearInterval(interval);
+        }
+      };
+    } else {
+      // Stop polling when history is hidden
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        setPollingInterval(null);
+      }
     }
   }, [showHistory]);
 
@@ -593,6 +616,19 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
         </form>
       </div>
 
+      {/* Summary Cards */}
+      <div className="summary-cards-grid">
+        <div className="summary-card-small">
+          <div className="summary-icon-small bg-blue-300">
+            <Package className="w-4 h-4 text-blue-600" />
+          </div>
+          <div>
+            <h3 className="summary-label-small">Total Products</h3>
+            <p className="summary-value-small text-blue-600">{products.length}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Product History */}
       <div className="history-container">
         <div className="history-header">
@@ -977,6 +1013,54 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
           color: #a16207;
           margin: 0;
           font-weight: 600;
+        }
+
+        /* Summary Cards Styles */
+        .summary-cards-grid {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 1.5rem;
+          flex-wrap: wrap;
+        }
+
+        .summary-card-small {
+          background: white;
+          border-radius: 12px;
+          padding: 12px 16px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          box-shadow: #cff0ff 0px 5px 10px -5px;
+          border: 1px solid transparent;
+          transition: all 0.2s ease;
+          min-width: 140px;
+          flex: 0 0 auto;
+        }
+
+        .summary-card-small:hover {
+          border-color: #12B1D1;
+          transform: translateY(-1px);
+        }
+
+        .summary-icon-small {
+          width: 32px;
+          height: 32px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .summary-label-small {
+          font-size: 12px;
+          color: rgb(170, 170, 170);
+          margin-bottom: 2px;
+          font-weight: 700;
+        }
+
+        .summary-value-small {
+          font-size: 18px;
+          font-weight: 700;
         }
 
         /* History Styles */

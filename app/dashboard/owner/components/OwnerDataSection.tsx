@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import useSWR from "swr";
 import EthiopianDate from "@/components/EthiopianDate";
 import { gregorianToEthiopian } from "@/utils/ethiopianCalendar";
@@ -49,6 +49,12 @@ export default function OwnerDataSection({ ownerId, dataType, onBackToStaff }: O
   const [statusFilter, setStatusFilter] = useState<'pending' | 'finished'>('pending');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   
+  // Date filter state
+  const [dateFilter, setDateFilter] = useState<string>('');
+  
+  // Auto-refresh state (hidden polling)
+  const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
+  
   // Modal state
   const [modal, setModal] = useState<{
     isOpen: boolean;
@@ -62,10 +68,24 @@ export default function OwnerDataSection({ ownerId, dataType, onBackToStaff }: O
     type: "info"
   });
 
+  // Auto-refresh effect (hidden polling every 5 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLastRefresh(Date.now());
+    }, 5000); // 5 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Fetch data based on type
   const { data, error, isLoading: loadingData } = useSWR(
     `/api/owners/${ownerId}/${dataType === 'productSales' ? 'product-sales' : dataType}`,
-    fetcher
+    fetcher,
+    {
+      refreshInterval: 5000, // Auto-refresh every 5 seconds
+      revalidateOnFocus: false, // Don't refresh on focus
+      revalidateOnReconnect: true // Refresh on reconnect
+    }
   );
 
   const closeModal = () => {
@@ -217,6 +237,24 @@ export default function OwnerDataSection({ ownerId, dataType, onBackToStaff }: O
     }
   };
 
+  // Get available dates for filter dropdown
+  const getAvailableDates = (): string[] => {
+    const items = data?.[dataType === 'productSales' ? 'productSales' : dataType] || [];
+    const dateMap = new Map<string, Date>();
+    
+    items.forEach((item: any) => {
+      const date = new Date(item.createdAt);
+      const ethiopian = gregorianToEthiopian(date);
+      const ethiopianDateKey = `${ethiopian.day} ${ethiopian.monthName} ${ethiopian.year}`;
+      dateMap.set(ethiopianDateKey, date);
+    });
+    
+    // Sort dates by newest first using the original Gregorian dates
+    return Array.from(dateMap.entries())
+      .sort((a, b) => b[1].getTime() - a[1].getTime())
+      .map(([ethiopianDate]) => ethiopianDate);
+  };
+
   // Group data by Ethiopian date
   const groupDataByDate = (items: any[]) => {
     const grouped: { [key: string]: any[] } = {};
@@ -226,10 +264,20 @@ export default function OwnerDataSection({ ownerId, dataType, onBackToStaff }: O
       const ethiopian = gregorianToEthiopian(date);
       const ethiopianDateKey = `${ethiopian.day} ${ethiopian.monthName} ${ethiopian.year}`;
       
+      // Apply date filter if set
+      if (dateFilter && ethiopianDateKey !== dateFilter) {
+        return;
+      }
+      
       if (!grouped[ethiopianDateKey]) {
         grouped[ethiopianDateKey] = [];
       }
       grouped[ethiopianDateKey].push(item);
+    });
+    
+    // Sort operations within each date group by newest first
+    Object.keys(grouped).forEach(dateKey => {
+      grouped[dateKey].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     });
     
     return grouped;
@@ -324,7 +372,26 @@ export default function OwnerDataSection({ ownerId, dataType, onBackToStaff }: O
     : items;
   
   const groupedData = groupDataByDate(filteredItems);
-  const dates = Object.keys(groupedData);
+  
+  // Sort dates by newest first
+  const dates = Object.keys(groupedData).sort((a, b) => {
+    // Convert Ethiopian dates back to Gregorian for proper sorting
+    const dateMap = new Map<string, Date>();
+    
+    // Get the first item from each date group to get the original Gregorian date
+    Object.keys(groupedData).forEach(dateKey => {
+      const firstItem = groupedData[dateKey][0];
+      if (firstItem) {
+        dateMap.set(dateKey, new Date(firstItem.createdAt));
+      }
+    });
+    
+    const dateA = dateMap.get(a);
+    const dateB = dateMap.get(b);
+    
+    if (!dateA || !dateB) return 0;
+    return dateB.getTime() - dateA.getTime();
+  });
 
   return (
     <div className="owner-data-container">
@@ -356,7 +423,22 @@ export default function OwnerDataSection({ ownerId, dataType, onBackToStaff }: O
           <div className="stat-card">
             <TrendingUp className="w-4 h-4" />
             <span>Total Items: {filteredItems.length}</span>
-      </div>
+          </div>
+
+          {/* Date Filter */}
+          <div className="date-filter">
+            <label className="filter-label">📅 Filter by Date:</label>
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="filter-select"
+            >
+              <option value="">All Dates</option>
+              {getAvailableDates().map(date => (
+                <option key={date} value={date}>{date}</option>
+              ))}
+            </select>
+          </div>
 
           {/* Status Filter for Product Sales */}
           {dataType === 'productSales' && (
@@ -872,6 +954,34 @@ export default function OwnerDataSection({ ownerId, dataType, onBackToStaff }: O
           display: flex;
           gap: 1rem;
           align-items: center;
+        }
+
+        .date-filter {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+        }
+
+        .filter-select {
+          background: white;
+          border: 1px solid #d1d5db;
+          border-radius: 8px;
+          padding: 0.5rem 0.75rem;
+          font-size: 0.875rem;
+          color: #374151;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          min-width: 200px;
+        }
+
+        .filter-select:focus {
+          outline: none;
+          border-color: #3b82f6;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .filter-select:hover {
+          border-color: #9ca3af;
         }
 
         .status-filter {
@@ -1548,6 +1658,10 @@ export default function OwnerDataSection({ ownerId, dataType, onBackToStaff }: O
             justify-content: center;
             flex-direction: column;
             gap: 1rem;
+          }
+
+          .date-filter {
+            align-items: center;
           }
 
           .status-filter {

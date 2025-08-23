@@ -16,9 +16,11 @@ export async function PUT(
     const { id } = params;
     const updateData = await req.json();
     
-
-    
-
+    console.log("🔧 [API] Received update request:", {
+      id,
+      updateData,
+      convertToNewStructure: updateData.convertToNewStructure
+    });
 
     // Update the operation using DatabaseService
     const updatedOperation = await DatabaseService.updateAdminServiceOperation(

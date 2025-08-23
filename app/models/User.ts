@@ -13,13 +13,24 @@ interface ServiceOperation {
 interface AdminServiceOperation {
   _id?: mongoose.Types.ObjectId;
   name: string;
-  price: number;
-  status: 'pending' | 'finished';
+  price?: number; // Individual worker price (for backward compatibility)
+  totalPrice?: number; // Combined total price for multiple workers
+  status: 'pending' | 'pending_to_confirm' | 'finished';
   createdAt: Date;
   finishedDate?: Date;
-  workerName: string;
-  workerRole: 'barber' | 'washer';
-  workerId: mongoose.Types.ObjectId;
+  paymentConfirmedDate?: Date;
+  workerConfirmedDate?: Date;
+  // Single worker fields (for backward compatibility)
+  workerName?: string;
+  workerRole?: 'barber' | 'washer';
+  workerId?: mongoose.Types.ObjectId;
+  // Combined workers array (new structure)
+  workers?: Array<{
+    workerName: string;
+    workerRole: 'barber' | 'washer';
+    workerId: mongoose.Types.ObjectId;
+    price: number;
+  }>;
   by: 'cash' | 'mobile banking(telebirr)';
   paymentImageUrl?: string;
 }
@@ -70,22 +81,35 @@ const serviceOperationSchema = new mongoose.Schema({
   name: { type: String, required: true },
   price: { type: Number, required: true },
   originalPrice: { type: Number }, // For reference to full price
-  status: { type: String, enum: ['pending', 'finished'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'pending_to_confirm', 'finished'], default: 'pending' },
   createdAt: { type: Date, default: Date.now },
-  finishedDate: { type: Date } // When operation was marked as finished
-}, { _id: false });
+  finishedDate: { type: Date }, // When operation was marked as finished
+  paymentConfirmedDate: { type: Date }, // When owner confirmed payment
+  workerConfirmedDate: { type: Date } // When worker confirmed receiving payment
+}, { _id: true }); // Allow _id fields for consistency with admin operations
 
-// Admin service operation schema with worker details
+// Admin service operation schema with worker details (supports both single and combined operations)
 const adminServiceOperationSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  price: { type: Number, required: true }, // Full price
-  status: { type: String, enum: ['pending', 'finished'], default: 'pending' },
+  price: { type: Number }, // Individual worker price (for backward compatibility)
+  totalPrice: { type: Number }, // Combined total price for multiple workers
+  status: { type: String, enum: ['pending', 'pending_to_confirm', 'finished'], default: 'pending' },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }, // When operation was last updated
   finishedDate: { type: Date }, // When operation was marked as finished
-  workerName: { type: String, required: true },
-  workerRole: { type: String, enum: ['barber', 'washer'], required: true },
-  workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  paymentConfirmedDate: { type: Date }, // When owner confirmed payment
+  workerConfirmedDate: { type: Date }, // When worker confirmed receiving payment
+  // Single worker fields (for backward compatibility)
+  workerName: { type: String },
+  workerRole: { type: String, enum: ['barber', 'washer'] },
+  workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  // Combined workers array (new structure)
+  workers: [{
+    workerName: { type: String, required: true },
+    workerRole: { type: String, enum: ['barber', 'washer'], required: true },
+    workerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    price: { type: Number, required: true }
+  }],
   by: { type: String, enum: ['cash', 'mobile banking(telebirr)'], default: 'cash' },
   paymentImageUrl: { type: String } // Payment proof image URL
 }, { _id: true });

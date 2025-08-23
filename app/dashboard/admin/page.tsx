@@ -1,8 +1,9 @@
 "use client";
 import Link from "next/link";
 import useSWR from "swr";
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import "./styles.css";
 import { getUserFromLocalStorage } from "@/utils/auth";
 import EthiopianDate from "@/components/EthiopianDate";
 import Modal from "@/components/ui/modal";
@@ -115,6 +116,14 @@ interface ServiceOperation {
     role: string;
     price: number;
   } | null;
+  // Additional properties for combined operations
+  totalPrice?: number;
+  workers?: Array<{
+    workerName: string;
+    workerRole: "barber" | "washer";
+    workerId?: string;
+    price: number;
+  }>;
 }
 
 interface WorkerServiceOperation {
@@ -140,7 +149,7 @@ interface AdminServiceOperation {
 // EditOperationForm component is now imported from @/components/EditOperationForm
 
 // Internal component that has access to offline context
-function AdminDashboardContent() {
+const AdminDashboardContent = React.memo(() => {
   const [user, setUser] = useState<{ _id: string; name: string; role: string; branchId: string } | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
   
@@ -239,6 +248,18 @@ function AdminDashboardContent() {
   // Get offline queue functionality - MUST be called before any conditional returns
   const { isOffline, queueService } = useOfflineQueue();
 
+  // Add keyboard navigation
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSidebarOpen(false);
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, []);
+
   // Get branchId from user data
   useEffect(() => {
     if (user) {
@@ -249,17 +270,32 @@ function AdminDashboardContent() {
   // Fetch services, barbers, washers, and service operations
   const { data: services = [] } = useSWR<Service[]>(
     user?.branchId ? `/api/services/${user.branchId}` : null,
-    fetcher
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 10000,
+      errorRetryCount: 2,
+    }
   );
 
   const { data: barbers = [] } = useSWR<Barber[]>(
     user?.branchId ? `/api/workers?branchId=${user.branchId}&role=barber` : null,
-    fetcher
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 10000,
+      errorRetryCount: 2,
+    }
   );
 
   const { data: washers = [] } = useSWR<Washer[]>(
     user?.branchId ? `/api/workers?branchId=${user.branchId}&role=washer` : null,
-    fetcher
+    fetcher,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 10000,
+      errorRetryCount: 2,
+    }
   );
 
   const { mutate: mutateOperations } = useSWR<ServiceOperation[]>(
@@ -299,34 +335,125 @@ function AdminDashboardContent() {
     showHistory ? `/api/admin/service-operations` : null,
     fetcher,
     {
-      refreshInterval: 5000, // Poll every 5 seconds
-      revalidateOnFocus: true,
-      revalidateOnReconnect: true
+      refreshInterval: 30000, // Poll every 30 seconds (reduced from 5s)
+      revalidateOnFocus: false, // Disable focus revalidation
+      revalidateOnReconnect: true,
+      dedupingInterval: 5000, // Prevent duplicate requests
+      focusThrottleInterval: 5000,
+      errorRetryCount: 3,
+      errorRetryInterval: 5000,
     }
   );
+
+  // Debug: Log the received data structure
+  useEffect(() => {
+    if (serviceOperationsHistory && serviceOperationsHistory.length > 0) {
+      console.log("🔍 Received service operations history:", serviceOperationsHistory);
+      console.log("🔍 Total operations count:", serviceOperationsHistory.length);
+      
+      // Log all operations with workers array
+      const operationsWithWorkers = serviceOperationsHistory.filter((op: ServiceOperation) => op.workers && op.workers.length > 0);
+      console.log("🔍 Operations with workers array:", operationsWithWorkers.length);
+      
+      // Log each operation with workers array in detail
+      operationsWithWorkers.forEach((op: ServiceOperation, index: number) => {
+        console.log(`🔍 Operation ${index + 1} with workers:`, {
+          name: op.name,
+          totalPrice: op.totalPrice,
+          workersCount: op.workers?.length,
+          workers: op.workers?.map((w: any) => ({
+            workerName: w.workerName,
+            workerRole: w.workerRole,
+            price: w.price
+          }))
+        });
+      });
+      
+      // Log all operations without workers array (old structure)
+      const operationsWithoutWorkers = serviceOperationsHistory.filter((op: ServiceOperation) => !op.workers || op.workers.length === 0);
+      console.log("🔍 Operations without workers array (old structure):", operationsWithoutWorkers.length);
+    }
+  }, [serviceOperationsHistory]);
 
   // Ensure serviceOperations is always an array and filter to only pending operations
   const safeServiceOperationsHistory = Array.isArray(serviceOperationsHistory) ? serviceOperationsHistory.filter(op => op.status === "pending") : [];
   
+  // Handle both old single operations and new combined operations
+  const getCombinedOperations = useMemo(() => {
+    const combinedOperations: ServiceOperation[] = [];
+    
+    safeServiceOperationsHistory.forEach((operation: ServiceOperation) => {
+      // If operation already has workers array (new structure), use it directly
+      if (operation.workers && operation.workers.length > 0) {
+        // For new structure operations, ensure totalPrice is set
+        const operationWithTotalPrice = {
+          ...operation,
+          totalPrice: operation.totalPrice || operation.workers.reduce((sum, worker) => sum + worker.price, 0)
+        };
+        console.log("🔍 Processing operation with workers array:", {
+          name: operation.name,
+          workersCount: operation.workers.length,
+          totalPrice: operationWithTotalPrice.totalPrice,
+          firstWorker: operation.workers[0]
+        });
+        combinedOperations.push(operationWithTotalPrice);
+      } else {
+        // For old single operations, create a combined structure
+        const existingCombined = combinedOperations.find(op => 
+          op._id === operation._id || 
+          (op.name === operation.name && op.createdAt === operation.createdAt)
+        );
+        
+        if (existingCombined) {
+          // Add to existing combined operation
+          existingCombined.workers = existingCombined.workers || [];
+          existingCombined.workers.push({
+            workerName: operation.workerName,
+            workerRole: operation.workerRole,
+            workerId: operation.workerId,
+            price: operation.price
+          });
+          existingCombined.totalPrice = (existingCombined.totalPrice || 0) + operation.price;
+        } else {
+          // Create new combined operation
+          combinedOperations.push({
+            ...operation,
+            workers: [{
+              workerName: operation.workerName,
+              workerRole: operation.workerRole,
+              workerId: operation.workerId,
+              price: operation.price
+            }],
+            totalPrice: operation.price
+          });
+        }
+      }
+    });
+    
+    console.log("🔍 Final combined operations count:", combinedOperations.length);
+    return combinedOperations;
+  }, [safeServiceOperationsHistory]);
+  
   // Filter operations by payment method
-  const getFilteredOperations = () => {
-    return safeServiceOperationsHistory.filter((operation: ServiceOperation) => {
+  const getFilteredOperations = useMemo((): ServiceOperation[] => {
+    const combinedOperations = getCombinedOperations;
+    return combinedOperations.filter((operation: ServiceOperation) => {
       if (paymentFilter === "all") return true;
       return operation.by === paymentFilter;
     });
-  };
+  }, [getCombinedOperations, paymentFilter]);
 
   // Get paginated data
-  const getPaginatedOperations = () => {
-    const filteredData = getFilteredOperations();
+  const getPaginatedOperations = useMemo(() => {
+    const filteredData = getFilteredOperations;
     const startIndex = (currentPage - 1) * itemsPerPage;
     const endIndex = startIndex + itemsPerPage;
     return filteredData.slice(startIndex, endIndex);
-  };
+  }, [getFilteredOperations, currentPage, itemsPerPage]);
 
   // Calculate pagination info
-  const getPaginationInfo = () => {
-    const filteredData = getFilteredOperations();
+  const getPaginationInfo = useMemo(() => {
+    const filteredData = getFilteredOperations;
     const totalItems = filteredData.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage);
     const startItem = (currentPage - 1) * itemsPerPage + 1;
@@ -339,23 +466,31 @@ function AdminDashboardContent() {
       endItem,
       currentPage
     };
-  };
+  }, [getFilteredOperations, currentPage, itemsPerPage]);
 
   // Handle page change
-  const handlePageChange = (page: number) => {
+  const handlePageChange = useCallback((page: number) => {
     setCurrentPage(page);
-  };
+  }, []);
 
   // Handle items per page change
-  const handleItemsPerPageChange = (limit: number) => {
+  const handleItemsPerPageChange = useCallback((limit: number) => {
     setItemsPerPage(limit);
     setCurrentPage(1); // Reset to first page when changing limit
-  };
+  }, []);
 
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [paymentFilter]);
+
+  // Clean up SWR cache on unmount
+  useEffect(() => {
+    return () => {
+      // Clear SWR cache for this component
+      mutateHistory(undefined, false);
+    };
+  }, [mutateHistory]);
   
   // Filter workers by role
   // const barbersHistory = barbersList.filter((worker: Barber) => worker.role === "barber");
@@ -398,16 +533,64 @@ function AdminDashboardContent() {
         return;
       }
 
+      // Enhanced logic to support both single and multiple workers
+      const workers = [];
+      let totalPrice = 0;
+
+      // Add barber if selected
+      if (selectedBarberId) {
+        const barber = barbersList.find(b => b._id === selectedBarberId);
+        if (barber && selectedService.barberPrice) {
+          workers.push({
+            workerName: barber.name,
+            workerRole: 'barber',
+            workerId: barber._id,
+            price: selectedService.barberPrice
+          });
+          totalPrice += selectedService.barberPrice;
+        }
+      }
+
+      // Add washer if selected
+      if (selectedWasherId) {
+        const washer = washersList.find(w => w._id === selectedWasherId);
+        if (washer && selectedService.washerPrice) {
+          workers.push({
+            workerName: washer.name,
+            workerRole: 'washer',
+            workerId: washer._id,
+            price: selectedService.washerPrice
+          });
+          totalPrice += selectedService.washerPrice;
+        }
+      }
+
+      // Fallback to single worker if no workers were added
+      if (workers.length === 0) {
+        workers.push({
+          workerName: workerName,
+          workerRole: workerRole,
+          workerId: workerId,
+          price: price
+        });
+        totalPrice = price;
+      }
+
       const updatedData = {
         name: selectedServiceId,
-        price: price,
-        workerName: workerName,
-        workerRole: workerRole,
-        workerId: workerId,
+        totalPrice: totalPrice,
+        workers: workers,
         by: paymentMethod,
-        paymentImageUrl: paymentImageUrl || undefined
+        paymentImageUrl: paymentImageUrl || undefined,
+        originalOperation: editingOperation, // Include original operation for matching
+        convertToNewStructure: true // Flag to convert to new structure
       };
 
+      console.log("🔧 [ADMIN] Edit operation - sending enhanced data:", {
+        workersCount: workers.length,
+        totalPrice,
+        workers: workers.map(w => `${w.workerName} (${w.workerRole})`)
+      });
       handleUpdateOperation(updatedData);
     } else {
       // Handle add operation (existing logic)
@@ -478,6 +661,18 @@ function AdminDashboardContent() {
     const service = getSelectedService();
     if (!service) return true;
 
+    // In edit mode, allow selecting both barber and washer
+    if (isEditMode) {
+      // Must have at least one worker selected
+      if (!selectedBarberId && !selectedWasherId) return true;
+      
+      // Check if image is required for mobile banking
+      if (paymentMethod === "mobile banking(telebirr)" && !paymentImageUrl) return true;
+      
+      return false;
+    }
+
+    // In add mode, require exactly one worker (old logic)
     if (service.barberPrice && !selectedBarberId) return true;
     if (service.washerPrice && !selectedWasherId) return true;
     if (!selectedBarberId && !selectedWasherId) return true;
@@ -485,14 +680,11 @@ function AdminDashboardContent() {
     // Check if image is required for mobile banking
     if (paymentMethod === "mobile banking(telebirr)" && !paymentImageUrl) return true;
 
-    // In edit mode, we don't need to check for duplicate services
-    if (!isEditMode) {
-      // Check if service is already selected (only for add mode)
-      const isAlreadySelected = selectedServices.some(
-        service => service.serviceName === selectedServiceId
-      );
-      if (isAlreadySelected) return true;
-    }
+    // Check if service is already selected (only for add mode)
+    const isAlreadySelected = selectedServices.some(
+      service => service.serviceName === selectedServiceId
+    );
+    if (isAlreadySelected) return true;
 
     return false;
   };
@@ -658,26 +850,24 @@ function AdminDashboardContent() {
 
       const token = localStorage.getItem("token");
 
-      const workerResponse = await fetch("/api/users/service-operations", {
+      // Single unified API call
+      const response = await fetch("/api/users/service-operations", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ serviceOperations: workerServiceOperations }),
+        body: JSON.stringify({ 
+          serviceOperations: workerServiceOperations,
+          adminServiceOperations: adminServiceOperations,
+          paymentMethod: paymentMethod,
+          paymentImageUrl: paymentImageUrl || undefined
+        }),
       });
 
-      const adminResponse = await fetch("/api/admin/service-operations", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ serviceOperations: adminServiceOperations }),
-      });
-
-      if (workerResponse.ok && adminResponse.ok) {
-        const adminResponseData = await adminResponse.json();
+      if (response.ok) {
+        const responseData = await response.json();
+        console.log("✅ Unified API response:", responseData);
         
         setSelectedServices([]);
         setPaymentImageUrl(''); // Clear payment image after successful save
@@ -686,12 +876,12 @@ function AdminDashboardContent() {
         setModal({
           isOpen: true,
           title: "Success",
-          message: "Services saved successfully!",
+          message: "Services saved successfully with consistent IDs!",
           type: "success"
         });
       } else {
-        const adminErrorData = await adminResponse.json().catch(() => ({}));
-        throw new Error("Failed to save services");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to save services");
       }
     } catch (error: unknown) {
       setModal({
@@ -843,8 +1033,6 @@ function AdminDashboardContent() {
       return;
     }
     
-
-    
     setUpdating(true);
     try {
       const token = localStorage.getItem("token");
@@ -852,18 +1040,44 @@ function AdminDashboardContent() {
         throw new Error("No authentication token found");
       }
       
+      // Check if we need to convert to new structure
+      const shouldConvertToNewStructure = updatedData.convertToNewStructure;
+      
+      console.log("🔧 [ADMIN] Received update data:", updatedData);
+      console.log("🔧 [ADMIN] Should convert to new structure:", shouldConvertToNewStructure);
+      
+      // Prepare the update data
+      let updatePayload = updatedData;
+      
+      if (shouldConvertToNewStructure) {
+        // Convert to new structure format
+        updatePayload = {
+          name: updatedData.name,
+          totalPrice: updatedData.totalPrice,
+          workers: updatedData.workers,
+          by: updatedData.by,
+          paymentImageUrl: updatedData.paymentImageUrl,
+          originalOperation: updatedData.originalOperation,
+          convertToNewStructure: true
+        };
+        
+        console.log("🔧 [ADMIN] Converted payload to new structure:", updatePayload);
+      }
+      
+      console.log("🔧 [ADMIN] Final update payload:", updatePayload);
+      
       const response = await fetch(`/api/admin/service-operations/${editingOperationId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify(updatedData)
+        body: JSON.stringify(updatePayload)
       });
 
       const responseData = await response.json();
       
-
+      console.log("🔧 Update response:", responseData);
 
       if (response.ok) {
         setModal({
@@ -975,8 +1189,6 @@ function AdminDashboardContent() {
 
   return (
     <>
-
-
       {/* Delete Confirmation Modal */}
       {deleteModal.isOpen && deleteModal.operation && (
         <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[99999] p-4">
@@ -1128,6 +1340,7 @@ function AdminDashboardContent() {
           {/* Top Bar */}
           <div className="top-bar">
             <button
+              aria-label="Toggle sidebar menu"
               onClick={toggleSidebar}
               className="menu-button"
             >
@@ -1291,7 +1504,7 @@ function AdminDashboardContent() {
                 <div>
                   <h3 className="summary-label-small">Pending Operations</h3>
                   <p className="summary-value-small text-blue-600">
-                    {getFilteredOperations().length}
+                    {getFilteredOperations.length}
                   </p>
                 </div>
               </div>
@@ -1302,7 +1515,7 @@ function AdminDashboardContent() {
                 <div>
                   <h3 className="summary-label-small">ዘይተረከበ ብር</h3>
                   <p className="summary-value-small text-green-600">
-                    {getFilteredOperations().reduce((total, op) => total + (op.price || 0), 0)} ብር
+                    {getFilteredOperations.reduce((total: number, op: ServiceOperation) => total + (op.totalPrice || op.price || 0), 0)} ብር
                   </p>
                 </div>
               </div>
@@ -1327,7 +1540,7 @@ function AdminDashboardContent() {
                   Retry
                 </button>
               </div>
-            ) : getFilteredOperations().length === 0 ? (
+            ) : getFilteredOperations.length === 0 ? (
               <div className="empty-state">
                 <Clock className="w-12 h-12 text-slate-400 mx-auto mb-2" />
                 <p className="text-slate-500">
@@ -1370,23 +1583,43 @@ function AdminDashboardContent() {
                     </tr>
                   </thead>
                   <tbody>
-                    {getPaginatedOperations().map((operation: ServiceOperation, index: number) => {
-                      const paginationInfo = getPaginationInfo();
+                                        {getPaginatedOperations.map((operation: ServiceOperation, index: number) => {
+                      const paginationInfo = getPaginationInfo;
                       const rowNumber = paginationInfo.startItem + index;
-                                            return (
-                        <tr key={operation._id || `operation_${index}_${operation.workerName}_${operation.createdAt}`}>
+                                              return (
+                        <tr key={`${operation._id}_${index}`}>
                           <td className="text-center font-medium text-gray-600">{rowNumber}</td>
                           <td className="font-medium">{operation.name || 'N/A'}</td>
                         <td>
                           <span className="price-text">
-                            {operation.price || 0}ብር
+                            {operation.totalPrice || operation.price || 0}ብር
                           </span>
                         </td>
-                        <td className="font-medium">{operation.workerName || 'N/A'}</td>
+                                                 <td className="font-medium">
+                           {operation.workers && operation.workers.length > 0 ? (
+                             operation.workers.map((worker: any, workerIndex: number) => (
+                               <div key={workerIndex}>
+                                 {worker.workerName || 'N/A'}
+                               </div>
+                             ))
+                           ) : (
+                             operation.workerName || 'N/A'
+                           )}
+                         </td>
                         <td>
-                          <span className={`role-badge ${operation.workerRole === 'barber' ? 'barber' : 'washer'}`}>
-                            {operation.workerRole === 'barber' ? 'ቀምቃሚ' : operation.workerRole === 'washer' ? 'ሓጻቢት' : operation.workerRole || 'N/A'}
-                          </span>
+                                                     {operation.workers && operation.workers.length > 0 ? (
+                             operation.workers.map((worker: any, workerIndex: number) => (
+                               <div key={workerIndex}>
+                                 <span className={`role-badge ${worker.workerRole === 'barber' ? 'barber' : 'washer'}`}>
+                                   {worker.workerRole === 'barber' ? 'ቀምቃሚ' : worker.workerRole === 'washer' ? 'ሓጻቢት' : worker.workerRole || 'N/A'}
+                                 </span>
+                               </div>
+                             ))
+                           ) : (
+                             <span className={`role-badge ${operation.workerRole === 'barber' ? 'barber' : 'washer'}`}>
+                               {operation.workerRole === 'barber' ? 'ቀምቃሚ' : operation.workerRole === 'washer' ? 'ሓጻቢት' : operation.workerRole || 'N/A'}
+                             </span>
+                           )}
                         </td>
                         <td>
                           <span className={`payment-badge ${operation.by === 'cash' ? 'cash' : operation.by === 'mobile banking(telebirr)' ? 'mobile' : 'cash'}`}>
@@ -1444,15 +1677,6 @@ function AdminDashboardContent() {
                             >
                               ✏️
                             </button>
-                            <button
-                              onClick={() => {
-                                handleDeleteOperation(operation);
-                              }}
-                              className="action-icon-button delete"
-                              title="Delete"
-                            >
-                              🗑️
-                            </button>
                           </div>
                         </td>
                       </tr>
@@ -1462,11 +1686,11 @@ function AdminDashboardContent() {
                 </table>
                 
                 {/* Pagination Component */}
-                {getFilteredOperations().length > 0 && (
+                {getFilteredOperations.length > 0 && (
                   <Pagination
                     currentPage={currentPage}
-                    totalPages={getPaginationInfo().totalPages}
-                    totalItems={getPaginationInfo().totalItems}
+                    totalPages={getPaginationInfo.totalPages}
+                    totalItems={getPaginationInfo.totalItems}
                     itemsPerPage={itemsPerPage}
                     onPageChange={handlePageChange}
                     onItemsPerPageChange={handleItemsPerPageChange}
@@ -1498,6 +1722,7 @@ function AdminDashboardContent() {
                 <div className="form-group">
                   <label className="form-label">Service</label>
                   <select
+                    aria-label="Select service"
                     value={selectedServiceId}
                     onChange={(e) => {
                       setSelectedServiceId(e.target.value);
@@ -1522,6 +1747,7 @@ function AdminDashboardContent() {
                       Barber {getSelectedService()?.barberPrice ? `(${getSelectedService()?.barberPrice}ብር)` : ''} *
                     </label>
                     <select
+                      aria-label="Select barber"
                       value={selectedBarberId}
                       onChange={(e) => setSelectedBarberId(e.target.value)}
                       className="form-select"
@@ -1543,6 +1769,7 @@ function AdminDashboardContent() {
                       Washer {getSelectedService()?.washerPrice ? `(${getSelectedService()?.washerPrice}ብር)` : ''} *
                     </label>
                     <select
+                      aria-label="Select washer"
                       value={selectedWasherId}
                       onChange={(e) => setSelectedWasherId(e.target.value)}
                       className="form-select"
@@ -1631,7 +1858,7 @@ function AdminDashboardContent() {
                   ) : (
                     <>
                       <Plus className="w-4 h-4 mr-2" />
-                      {isEditMode ? 'Update Service' : 'Add Service'}
+                      {isEditMode ? 'Update Service (Can select multiple workers)' : 'Add Service'}
                     </>
                   )}
                 </button>
@@ -1775,904 +2002,6 @@ function AdminDashboardContent() {
 
       </div>
 
-      <style jsx>{`
-        .container {
-          background: #F8F9FD;
-          background: linear-gradient(0deg, rgb(255, 255, 255) 0%, rgb(244, 247, 251) 100%);
-          border-radius: 40px;
-          padding: 25px 35px;
-          border: 5px solid rgb(255, 255, 255);
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 30px 30px -20px;
-          margin-bottom: 20px;
-        }
-
-        .heading {
-          text-align: center;
-          font-weight: 900;
-          font-size: 30px;
-          color: rgb(16, 137, 211);
-        }
-
-        .section-title {
-          font-weight: 700;
-          font-size: 20px;
-          color: rgb(16, 137, 211);
-          margin-bottom: 20px;
-        }
-
-        .subsection-title {
-          font-weight: 600;
-          font-size: 16px;
-          color: rgb(16, 137, 211);
-          margin-bottom: 15px;
-        }
-
-        .action-button {
-          background: linear-gradient(45deg, rgb(16, 137, 211) 0%, rgb(18, 177, 209) 100%);
-          color: white;
-          padding: 12px 20px;
-          border-radius: 20px;
-          border: none;
-          font-weight: 600;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s ease-in-out;
-          display: flex;
-          align-items: center;
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 10px 10px -5px;
-        }
-
-        .action-button:hover {
-          transform: scale(1.05);
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 15px 15px -10px;
-        }
-
-        .icon-button {
-          background: linear-gradient(45deg, rgb(16, 137, 211) 0%, rgb(18, 177, 209) 100%);
-          color: white;
-          padding: 12px;
-          border-radius: 50%;
-          border: none;
-          cursor: pointer;
-          transition: all 0.2s ease-in-out;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 10px 10px -5px;
-        }
-
-        .icon-button:hover {
-          transform: scale(1.1);
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 15px 15px -10px;
-        }
-
-        .header-buttons-grid {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .header-button {
-          background: linear-gradient(45deg, rgb(16, 137, 211) 0%, rgb(18, 177, 209) 100%);
-          color: white;
-          border: none;
-          padding: 8px 12px;
-          border-radius: 8px;
-          font-weight: 500;
-          font-size: 12px;
-          cursor: pointer;
-          transition: all 0.2s ease-in-out;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 5px 10px -5px;
-          min-width: 120px;
-          flex: 0 0 auto;
-        }
-
-        .header-button:hover {
-          transform: translateY(-1px);
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 8px 15px -5px;
-        }
-
-        .header-button.active {
-          background: linear-gradient(45deg, rgb(34, 197, 94) 0%, rgb(16, 185, 129) 100%);
-          transform: translateY(-1px);
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 8px 15px -5px;
-        }
-
-        /* Sidebar Styles */
-        .sidebar {
-          position: fixed;
-          top: 0;
-          left: -80px;
-          width: 80px;
-          height: 100vh;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          transition: left 0.3s ease;
-          z-index: 1000;
-          box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .sidebar.open {
-          left: 0;
-        }
-
-        .sidebar-header {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          padding: 15px 10px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .user-info {
-          text-align: center;
-          margin-bottom: 10px;
-        }
-
-        .user-name {
-          font-size: 10px;
-          font-weight: 600;
-          margin: 0 0 2px 0;
-          line-height: 1.2;
-        }
-
-        .branch-name {
-          font-size: 8px;
-          opacity: 0.8;
-          margin: 0;
-          line-height: 1.2;
-        }
-
-        .close-sidebar-btn {
-          background: rgba(255, 255, 255, 0.1);
-          border: none;
-          color: white;
-          padding: 6px;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: background-color 0.2s ease;
-          font-size: 10px;
-        }
-
-        .close-sidebar-btn:hover {
-          background: rgba(255, 255, 255, 0.2);
-        }
-
-        .sidebar-content {
-          padding: 10px 5px;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .sidebar-button {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          width: 100%;
-          padding: 8px 4px;
-          background: rgba(255, 255, 255, 0.1);
-          border: none;
-          color: white;
-          border-radius: 8px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          text-decoration: none;
-          font-size: 8px;
-          min-height: 50px;
-        }
-
-        .sidebar-button:hover {
-          background: rgba(255, 255, 255, 0.2);
-          transform: translateY(-2px);
-        }
-
-        .sidebar-button.active {
-          background: rgba(255, 255, 255, 0.25);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-        }
-
-        .sidebar-button.logout {
-          margin-top: auto;
-          background: rgba(239, 68, 68, 0.8);
-        }
-
-        .sidebar-button.logout:hover {
-          background: rgba(239, 68, 68, 1);
-        }
-
-        /* Main Content */
-        .main-content {
-          flex: 1;
-          margin-left: 0;
-          transition: margin-left 0.3s ease;
-          min-height: 100vh;
-          padding: 20px;
-        }
-
-        .main-content.sidebar-open {
-          margin-left: 80px;
-        }
-
-        /* Top Bar */
-        .top-bar {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          margin-bottom: 24px;
-          padding: 16px 24px;
-          background: white;
-          border-radius: 16px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-
-        .menu-button {
-          background: linear-gradient(45deg, rgb(16, 137, 211) 0%, rgb(18, 177, 209) 100%);
-          color: white;
-          border: none;
-          padding: 12px;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .menu-button:hover {
-          transform: scale(1.05);
-          box-shadow: 0 4px 12px rgba(16, 137, 211, 0.3);
-        }
-
-        .top-bar-info {
-          flex: 1;
-        }
-
-        .welcome-text {
-          font-size: 16px;
-          font-weight: 600;
-          color: #1e293b;
-          margin: 0 0 4px 0;
-        }
-
-        .branch-text {
-          font-size: 14px;
-          color: #64748b;
-          margin: 0;
-        }
-
-        .summary-card {
-          background: white;
-          border-radius: 20px;
-          padding: 20px;
-          display: flex;
-          align-items: center;
-          gap: 15px;
-          box-shadow: #cff0ff 0px 10px 10px -5px;
-          border: 2px solid transparent;
-          transition: all 0.2s ease;
-        }
-
-        .summary-card:hover {
-          border-color: #12B1D1;
-          transform: translateY(-2px);
-        }
-
-        .summary-icon {
-          width: 50px;
-          height: 50px;
-          border-radius: 15px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .summary-label {
-          font-size: 12px;
-          color: rgb(170, 170, 170);
-          margin-bottom: 4px;
-        }
-
-        .summary-value {
-          font-size: 24px;
-          font-weight: 700;
-        }
-
-        .summary-cards-grid {
-          display: flex;
-          gap: 12px;
-          margin-bottom: 1.5rem;
-          flex-wrap: wrap;
-        }
-
-        .summary-card-small {
-          background: white;
-          border-radius: 12px;
-          padding: 12px 16px;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          box-shadow: #cff0ff 0px 5px 10px -5px;
-          border: 1px solid transparent;
-          transition: all 0.2s ease;
-          min-width: 140px;
-          flex: 0 0 auto;
-        }
-
-        .summary-card-small:hover {
-          border-color: #12B1D1;
-          transform: translateY(-1px);
-        }
-
-        .summary-icon-small {
-          width: 32px;
-          height: 32px;
-          border-radius: 8px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .summary-label-small {
-          font-size: 12px;
-          color: rgb(170, 170, 170);
-          margin-bottom: 2px;
-          font-weight: 700;
-        }
-
-        .summary-value-small {
-          font-size: 18px;
-          font-weight: 700;
-        }
-
-        .price-text {
-          font-weight: 600;
-          font-size: 14px;
-          color: #1e293b;
-        }
-
-        .form-group {
-          margin-bottom: 15px;
-        }
-
-        .form-label {
-          display: block;
-          font-size: 14px;
-          font-weight: 600;
-          color: rgb(16, 137, 211);
-          margin-bottom: 8px;
-        }
-
-        .form-select {
-          width: 100%;
-          background: white;
-          border: none;
-          padding: 15px 20px;
-          border-radius: 20px;
-          box-shadow: #cff0ff 0px 10px 10px -5px;
-          border-inline: 2px solid transparent;
-          font-size: 14px;
-          transition: all 0.2s ease;
-        }
-
-        .form-select:focus {
-          outline: none;
-          border-inline: 2px solid #12B1D1;
-        }
-
-        .add-button {
-          width: 100%;
-          background: linear-gradient(45deg, rgb(16, 137, 211) 0%, rgb(18, 177, 209) 100%);
-          color: white;
-          padding: 15px;
-          border-radius: 20px;
-          border: none;
-          font-weight: 600;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s ease-in-out;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 10px 10px -5px;
-        }
-
-        .add-button:hover:not(:disabled) {
-          transform: scale(1.02);
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 15px 15px -10px;
-        }
-
-        .add-button:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-          transform: none;
-        }
-
-        .table-container {
-          background: white;
-          border-radius: 20px;
-          overflow-x: auto;
-          box-shadow: #cff0ff 0px 10px 10px -5px;
-        }
-
-        .data-table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-
-        .data-table th {
-          background: #f0f9ff;
-          padding: 15px;
-          text-align: left;
-          font-weight: 600;
-          font-size: 14px;
-          color: rgb(16, 137, 211);
-          border-bottom: 2px solid #e5e7eb;
-        }
-
-        .data-table th:first-child {
-          text-align: center;
-          width: 60px;
-        }
-
-        .data-table td {
-          padding: 15px;
-          border-bottom: 1px solid #f3f4f6;
-          font-size: 14px;
-        }
-
-        .data-table td:first-child {
-          text-align: center;
-          font-weight: 600;
-          color: #64748b;
-          width: 60px;
-        }
-
-        .data-table tr:hover {
-          background: #f8fafc;
-        }
-
-        .price-tag {
-          background: linear-gradient(45deg, rgb(16, 137, 211) 0%, rgb(18, 177, 209) 100%);
-          color: white;
-          padding: 4px 8px;
-          border-radius: 10px;
-          font-weight: 600;
-          font-size: 12px;
-        }
-
-        .role-badge {
-          padding: 4px 8px;
-          border-radius: 10px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .role-badge.barber {
-          background: #dbeafe;
-          color: #1d4ed8;
-        }
-
-        .role-badge.washer {
-          background: #dcfce7;
-          color: #15803d;
-        }
-
-        .payment-badge {
-          padding: 4px 8px;
-          border-radius: 10px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .payment-badge.cash {
-          background: #fef3c7;
-          color: #d97706;
-        }
-
-        .payment-badge.mobile {
-          background: #dbeafe;
-          color: #1d4ed8;
-        }
-
-        .status-badge {
-          padding: 4px 8px;
-          border-radius: 10px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .status-badge.pending {
-          background: #fef3c7;
-          color: #d97706;
-        }
-
-        .status-badge.finished {
-          background: #dcfce7;
-          color: #15803d;
-        }
-
-        .remove-button {
-          background: #fee2e2;
-          color: #dc2626;
-          border: none;
-          padding: 6px;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .remove-button:hover {
-          background: #fecaca;
-          transform: scale(1.1);
-        }
-
-        .service-card {
-          background: white;
-          border-radius: 15px;
-          padding: 15px;
-          box-shadow: #cff0ff 0px 5px 10px -5px;
-          border: 2px solid transparent;
-          transition: all 0.2s ease;
-        }
-
-        .service-card:hover {
-          border-color: #12B1D1;
-          transform: translateY(-2px);
-        }
-
-        .finish-button {
-          width: 100%;
-          background: linear-gradient(45deg, rgb(34, 197, 94) 0%, rgb(16, 185, 129) 100%);
-          color: white;
-          padding: 15px;
-          border-radius: 20px;
-          border: none;
-          font-weight: 600;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s ease-in-out;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 10px 10px -5px;
-        }
-
-        .finish-button:hover:not(:disabled) {
-          transform: scale(1.02);
-          box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 15px 15px -10px;
-        }
-
-        .finish-button:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-          transform: none;
-        }
-
-        .finish-button.offline {
-          background: linear-gradient(45deg, rgb(245, 158, 11) 0%, rgb(217, 119, 6) 100%);
-        }
-
-        .finish-button.offline:hover:not(:disabled) {
-          background: linear-gradient(45deg, rgb(217, 119, 6) 0%, rgb(180, 83, 9) 100%);
-        }
-
-        .loading-state, .error-state, .empty-state {
-          text-align: center;
-          padding: 40px 20px;
-        }
-
-        .retry-button {
-          background: linear-gradient(45deg, rgb(16, 137, 211) 0%, rgb(18, 177, 209) 100%);
-          color: white;
-          padding: 10px 20px;
-          border-radius: 15px;
-          border: none;
-          font-weight: 600;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s ease-in-out;
-          margin-top: 10px;
-        }
-
-        .retry-button:hover {
-          transform: scale(1.05);
-        }
-
-        .action-icon-button {
-          padding: 8px 12px;
-          border-radius: 8px;
-          border: none;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 16px;
-          min-width: 40px;
-          min-height: 40px;
-        }
-
-        .action-icon-button.edit {
-          background: #dbeafe;
-          color: #1d4ed8;
-          border: 2px solid #bfdbfe;
-        }
-
-        .action-icon-button.edit:hover {
-          background: #bfdbfe;
-          transform: scale(1.1);
-          box-shadow: 0 2px 8px rgba(29, 78, 216, 0.3);
-        }
-
-        .action-icon-button.delete {
-          background: #fee2e2;
-          color: #dc2626;
-          border: 2px solid #fecaca;
-        }
-
-        .action-icon-button.delete:hover {
-          background: #fecaca;
-          transform: scale(1.1);
-          box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
-        }
-
-        /* Modal Animations */
-        @keyframes fadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-
-        @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: scale(0.9) translateY(-20px);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-          }
-        }
-
-        .animate-slideIn {
-          animation: slideIn 0.3s ease-out;
-        }
-
-        .animate-fadeIn {
-          animation: fadeIn 0.3s ease-out;
-        }
-
-        /* Image Upload Styles */
-        .image-preview-container {
-          display: inline-block;
-          position: relative;
-        }
-
-        .image-preview-container img {
-          border-radius: 8px;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-
-        .image-preview-container .remove-button {
-          position: absolute;
-          top: -8px;
-          right: -8px;
-          background: #ef4444;
-          color: white;
-          border-radius: 50%;
-          width: 20px;
-          height: 20px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border: 2px solid white;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-          transition: all 0.2s ease;
-        }
-
-        .image-preview-container .remove-button:hover {
-          background: #dc2626;
-          transform: scale(1.1);
-        }
-
-        /* View Button Styles */
-        .view-button {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          padding: 4px 8px;
-          background: #eff6ff;
-          color: #2563eb;
-          border-radius: 6px;
-          font-size: 12px;
-          font-weight: 500;
-          border: 1px solid #bfdbfe;
-          transition: all 0.2s ease;
-          cursor: pointer;
-        }
-
-        .view-button:hover {
-          background: #dbeafe;
-          border-color: #93c5fd;
-          transform: translateY(-1px);
-          box-shadow: 0 2px 4px rgba(37, 99, 235, 0.1);
-        }
-
-        /* Download Button Styles */
-        .download-button {
-          display: inline-flex;
-          align-items: center;
-          gap: 4px;
-          padding: 4px 8px;
-          background: #f0fdf4;
-          color: #16a34a;
-          border-radius: 6px;
-          font-size: 12px;
-          font-weight: 500;
-          border: 1px solid #bbf7d0;
-          transition: all 0.2s ease;
-          cursor: pointer;
-        }
-
-        .download-button:hover {
-          background: #dcfce7;
-          border-color: #86efac;
-          transform: translateY(-1px);
-          box-shadow: 0 2px 4px rgba(22, 163, 74, 0.1);
-        }
-
-        .animate-slideIn {
-          animation: slideIn 0.3s ease-out;
-        }
-
-        /* Modal Responsive Design */
-        @media (max-width: 768px) {
-          .modal-content {
-            margin: 1rem;
-            max-width: calc(100vw - 2rem);
-            max-height: calc(100vh - 2rem);
-          }
-        }
-
-        /* Modal Scrollbar Styling */
-        .modal-content::-webkit-scrollbar {
-          width: 6px;
-        }
-
-        .modal-content::-webkit-scrollbar-track {
-          background: #f1f5f9;
-          border-radius: 3px;
-        }
-
-        .modal-content::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
-          border-radius: 3px;
-        }
-
-        .modal-content::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
-        }
-
-        /* Submit Button and Loading Spinner Styles */
-        .submit-button {
-          padding: 0.75rem 1.5rem;
-          border-radius: 12px;
-          font-size: 0.875rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          border: none;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
-        }
-
-        .submit-button:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-        }
-
-        .submit-button:disabled {
-          opacity: 0.7;
-          cursor: not-allowed;
-          transform: none;
-        }
-
-        .button-content {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
-        }
-
-        .loading-spinner {
-          width: 16px;
-          height: 16px;
-          border: 2px solid rgba(255, 255, 255, 0.3);
-          border-top: 2px solid white;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-
-        /* Payment Proof Preview Modal */
-        .payment-proof-backdrop {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.5);
-          z-index: 9999;
-          cursor: pointer;
-        }
-
-        .payment-proof-preview {
-          position: fixed;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          background: white;
-          border-radius: 16px;
-          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-          z-index: 10000;
-          max-width: 90vw;
-          max-height: 90vh;
-          overflow: hidden;
-        }
-
-        .preview-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 1rem 1.5rem;
-          border-bottom: 1px solid #e2e8f0;
-          background: #f8fafc;
-        }
-
-        .preview-title {
-          font-size: 1rem;
-          font-weight: 600;
-          color: #374151;
-        }
-
-        .close-preview {
-          background: none;
-          border: none;
-          color: #64748b;
-          cursor: pointer;
-          padding: 0.25rem;
-          border-radius: 4px;
-          transition: all 0.2s ease;
-        }
-
-        .close-preview:hover {
-          background: #e2e8f0;
-          color: #374151;
-        }
-
-        .preview-image {
-          max-width: 100%;
-          max-height: 70vh;
-          object-fit: contain;
-          display: block;
-        }
-      `}</style>
-
       {/* Payment proof preview modal */}
       {previewImage.isOpen && (
         <>
@@ -2701,17 +2030,58 @@ function AdminDashboardContent() {
       )}
     </>
   );
+});
+// Error Boundary Component
+class AdminDashboardErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Admin Dashboard Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center p-4">
+          <div className="text-center">
+            <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Something went wrong</h2>
+            <p className="text-gray-600 mb-4">The admin dashboard encountered an error.</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              Reload Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 // Main component wrapper
 export default function AdminDashboard() {
   return (
-    <OfflineProvider 
-      autoSync={true}
-      syncOnMount={true}
-      enableLogging={true}
-    >
-      <AdminDashboardContent />
-    </OfflineProvider>
+    <AdminDashboardErrorBoundary>
+      <OfflineProvider 
+        autoSync={true}
+        syncOnMount={true}
+        enableLogging={true}
+      >
+        <AdminDashboardContent />
+      </OfflineProvider>
+    </AdminDashboardErrorBoundary>
   );
 } 

@@ -6,14 +6,22 @@ import ImageUpload from "./ImageUpload";
 interface ServiceOperation {
   _id?: string;
   name: string;
-  price: number;
-  workerName: string;
-  workerRole: "barber" | "washer";
-  workerId?: string;
+  price?: number; // Optional for new structure
+  totalPrice?: number; // For combined operations
+  workerName?: string; // Optional for new structure
+  workerRole?: "barber" | "washer"; // Optional for new structure
+  workerId?: string; // Optional for new structure
   status?: string;
   by: "cash" | "mobile banking(telebirr)";
   paymentImageUrl?: string;
   createdAt?: string;
+  // New structure for combined operations
+  workers?: Array<{
+    workerName: string;
+    workerRole: "barber" | "washer";
+    workerId?: string;
+    price: number;
+  }>;
 }
 
 interface Service {
@@ -41,12 +49,18 @@ export default function EditOperationForm({
   onCancel, 
   updating 
 }: EditOperationFormProps) {
+  // Check if this is a combined operation (has workers array)
+  const isCombinedOperation = operation.workers && operation.workers.length > 0;
+  
+  // For combined operations, we'll edit the first worker (or create a new single operation)
+  const firstWorker = isCombinedOperation && operation.workers ? operation.workers[0] : null;
+  
   const [formData, setFormData] = useState({
     name: operation.name || '',
-    price: operation.price || 0,
-    workerName: operation.workerName || '',
-    workerRole: operation.workerRole || 'barber' as const,
-    workerId: operation.workerId || '',
+    price: isCombinedOperation ? (firstWorker?.price || 0) : (operation.price || 0),
+    workerName: isCombinedOperation ? (firstWorker?.workerName || '') : (operation.workerName || ''),
+    workerRole: (isCombinedOperation ? (firstWorker?.workerRole || 'barber') : (operation.workerRole || 'barber')) as "barber" | "washer",
+    workerId: isCombinedOperation ? (firstWorker?.workerId || '') : (operation.workerId || ''),
     by: operation.by || 'cash' as const
   });
 
@@ -61,12 +75,15 @@ export default function EditOperationForm({
 
   // Update form data when operation changes
   useEffect(() => {
+    const isCombinedOperation = operation.workers && operation.workers.length > 0;
+    const firstWorker = isCombinedOperation && operation.workers ? operation.workers[0] : null;
+    
     setFormData({
       name: operation.name || '',
-      price: operation.price || 0,
-      workerName: operation.workerName || '',
-      workerRole: operation.workerRole || 'barber' as const,
-      workerId: operation.workerId || '',
+      price: isCombinedOperation ? (firstWorker?.price || 0) : (operation.price || 0),
+      workerName: isCombinedOperation ? (firstWorker?.workerName || '') : (operation.workerName || ''),
+      workerRole: (isCombinedOperation ? (firstWorker?.workerRole || 'barber') : (operation.workerRole || 'barber')) as "barber" | "washer",
+      workerId: isCombinedOperation ? (firstWorker?.workerId || '') : (operation.workerId || ''),
       by: operation.by || 'cash' as const
     });
     
@@ -183,13 +200,22 @@ export default function EditOperationForm({
     // Simple image handling like admin dashboard
     const finalImageUrl = formData.by === 'mobile banking(telebirr)' ? paymentImageUrl || undefined : undefined;
     
+    // Always save in new structure format (with workers array)
     const updateData = {
-      ...formData,
+      name: formData.name,
+      totalPrice: formData.price, // For single worker, totalPrice = worker price
+      workers: [{
+        workerName: formData.workerName,
+        workerRole: formData.workerRole,
+        workerId: formData.workerId,
+        price: formData.price
+      }],
+      by: formData.by,
       paymentImageUrl: finalImageUrl,
-      originalOperation: operation // Include original operation for matching
+      originalOperation: operation, // Include original operation for matching
+      isCombinedOperation: isCombinedOperation, // Flag to indicate if this was a combined operation
+      convertToNewStructure: true // Flag to indicate this should be converted to new structure
     };
-    
-
     
     onUpdate(updateData);
   };
@@ -221,6 +247,21 @@ export default function EditOperationForm({
   return (
     <div className="w-full h-full max-h-screen overflow-y-auto px-4 py-6">
       <div className="w-full max-w-sm mx-auto">
+        {/* Warning for combined operations */}
+        {isCombinedOperation && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+              <span className="text-sm text-yellow-700 font-medium">
+                ⚠️ Combined Operation
+              </span>
+            </div>
+            <p className="text-xs text-yellow-600 mt-1">
+              This operation has multiple workers. You can edit the first worker's details.
+            </p>
+          </div>
+        )}
+        
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Service Name - Editable Dropdown */}
           <div className="form-group">
