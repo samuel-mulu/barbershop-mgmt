@@ -1,55 +1,197 @@
 "use client";
 import Link from "next/link";
-import { Calendar, ArrowLeft } from "lucide-react";
+import { Calendar, ArrowLeft, Plus, X, Tag } from "lucide-react";
+import { useState } from "react";
+
+interface Customer {
+  id: string;
+  description: string;
+  addedAt: Date;
+  status: 'waiting' | 'in-progress' | 'completed';
+}
 
 export default function ViewAppointmentsPage() {
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [newCustomerDescription, setNewCustomerDescription] = useState('');
+
+  const addCustomer = () => {
+    if (!newCustomerDescription.trim()) return;
+
+    const customer: Customer = {
+      id: Date.now().toString(),
+      description: newCustomerDescription.trim(),
+      addedAt: new Date(),
+      status: 'waiting'
+    };
+
+    setCustomers(prev => [...prev, customer]); // Add to end for FIFO
+    setNewCustomerDescription('');
+  };
+
+  const removeCustomer = (id: string) => {
+    setCustomers(prev => prev.filter(customer => customer.id !== id));
+  };
+
+  const updateStatus = (id: string, status: Customer['status']) => {
+    setCustomers(prev => prev.map(customer => 
+      customer.id === id ? { ...customer, status } : customer
+    ));
+  };
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+  };
+
+  const getStatusColor = (status: Customer['status']) => {
+    switch (status) {
+      case 'waiting': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      case 'in-progress': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'completed': return 'bg-green-100 text-green-800 border-green-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getStatusText = (status: Customer['status']) => {
+    switch (status) {
+      case 'waiting': return '⏳ Waiting';
+      case 'in-progress': return '✂️ In Progress';
+      case 'completed': return '✅ Completed';
+      default: return 'Unknown';
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-4">
-      <div className="container mx-auto max-w-4xl">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 p-2 sm:p-4">
+      <div className="container mx-auto max-w-2xl">
         {/* Header */}
-        <div className="mb-6">
-          <Link href="/dashboard/admin" className="inline-flex items-center text-blue-600 hover:text-blue-700 mb-4">
+        <div className="mb-4 sm:mb-6">
+          <Link href="/dashboard/admin" className="inline-flex items-center text-blue-600 hover:text-blue-700 mb-3">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Dashboard
+            <span className="text-sm sm:text-base">Back to Dashboard</span>
           </Link>
-          <div className="flex items-center">
-            <div className="bg-blue-100 p-3 rounded-lg mr-4">
-              <Calendar className="w-6 h-6 text-blue-600" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center">
+              <div className="bg-blue-100 p-2 sm:p-3 rounded-lg mr-3 sm:mr-4">
+                <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+              </div>
+              <div>
+                <h1 className="text-lg sm:text-2xl font-bold text-slate-800">Customer Queue</h1>
+                <p className="text-xs sm:text-sm text-slate-600">Add customers by description</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800">View Appointments</h1>
-              <p className="text-slate-600">Manage and view customer appointments</p>
+            <div className="text-right">
+              <div className="text-xl sm:text-2xl font-bold text-blue-600">{customers.length}</div>
+              <div className="text-xs sm:text-sm text-slate-600">Total</div>
             </div>
           </div>
         </div>
 
-        {/* Coming Soon Message */}
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-8 text-center">
-          <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Calendar className="w-8 h-8 text-blue-600" />
+        {/* Add Customer Section */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6 mb-4 sm:mb-6">
+          <div className="space-y-3 p-3 sm:p-4 bg-slate-50 rounded-lg">
+            <div>
+              <textarea
+                value={newCustomerDescription}
+                onChange={(e) => setNewCustomerDescription(e.target.value)}
+                placeholder="Red shirt guy, blue hat, wants fade cut, etc..."
+                rows={2}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={addCustomer}
+                disabled={!newCustomerDescription.trim()}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+              >
+                Add
+              </button>
+              <button
+                onClick={() => setNewCustomerDescription('')}
+                className="px-4 py-2 bg-slate-500 text-white rounded-lg hover:bg-slate-600 transition-colors text-sm font-medium"
+              >
+                Clear
+              </button>
+            </div>
           </div>
-          <h2 className="text-xl font-semibold text-slate-800 mb-2">Appointment Management</h2>
-          <p className="text-slate-600 mb-6">
-            The appointment management feature is coming soon. This will allow you to view, 
-            schedule, and manage customer appointments for your barbershop.
-          </p>
-          <div className="bg-slate-50 rounded-lg p-4 mb-6">
-            <h3 className="font-medium text-slate-800 mb-2">Planned Features:</h3>
-            <ul className="text-sm text-slate-600 space-y-1">
-              <li>• View all scheduled appointments</li>
-              <li>• Schedule new appointments</li>
-              <li>• Manage appointment status</li>
-              <li>• Send appointment reminders</li>
-              <li>• Calendar view integration</li>
-            </ul>
-          </div>
-          <Link 
-            href="/dashboard/admin" 
-            className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Return to Dashboard
-          </Link>
         </div>
+
+        {/* Customer List */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 sm:p-6">
+          {customers.length === 0 ? (
+            <div className="text-center py-8">
+              <Calendar className="w-12 h-12 text-slate-400 mx-auto mb-4" />
+              <p className="text-slate-600 text-sm sm:text-base">No customers in queue</p>
+              <p className="text-slate-500 text-xs sm:text-sm">Add your first customer to get started</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {customers.map((customer, index) => (
+                <div key={customer.id} className="border border-slate-200 rounded-lg p-3 hover:bg-slate-50 transition-colors">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-bold text-slate-600">#{index + 1}</span>
+                      <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getStatusColor(customer.status)}`}>
+                        {getStatusText(customer.status)}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => removeCustomer(customer.id)}
+                      className="p-1 text-red-500 hover:text-red-700 hover:bg-red-50 rounded transition-colors"
+                      title="Remove customer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                  
+                  <p className="text-sm text-slate-800 font-medium mb-2">
+                    {customer.description}
+                  </p>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-600">
+                      {formatTime(customer.addedAt)}
+                    </span>
+                    <select
+                      value={customer.status}
+                      onChange={(e) => updateStatus(customer.id, e.target.value as Customer['status'])}
+                      className="px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      <option value="waiting">Waiting</option>
+                      <option value="in-progress">In Progress</option>
+                      <option value="completed">Completed</option>
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Quick Actions */}
+        {customers.length > 0 && (
+          <div className="mt-4 sm:mt-6 bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+            <div className="flex gap-2">
+              <button
+                onClick={() => setCustomers([])}
+                className="px-4 py-2 text-sm bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors font-medium"
+              >
+                Clear All
+              </button>
+              <button
+                onClick={() => setCustomers(prev => prev.filter(c => c.status !== 'completed'))}
+                className="px-4 py-2 text-sm bg-orange-100 text-orange-700 rounded-lg hover:bg-orange-200 transition-colors font-medium"
+              >
+                Remove Completed
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

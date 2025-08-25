@@ -3,6 +3,7 @@ import User from "@/models/User";
 import { connectDB } from "@/lib/db";
 import { verifyToken } from "@/lib/verifyToken";
 import mongoose from "mongoose";
+import Branch from "@/models/Branch"; // Added import for Branch
 
 export async function POST(req: Request) {
   try {
@@ -80,15 +81,18 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: `Barber user not found: ${operation.workerId}` }, { status: 404 });
         }
         
-        // Calculate barber's share (50% of the price)
-        const barberShare = Math.round(operation.barberPrice * 0.5);
+        // Get branch share settings
+        const branch = await Branch.findById(barberUser.branchId);
+        const barberSharePercentage = branch?.shareSettings?.barberShare || 50; // Default to 50% if not set
+        
+        // Calculate barber's share using branch settings
+        const barberShare = Math.round(operation.barberPrice * (barberSharePercentage / 100));
         
         // Add service operation to barber's user document
         const serviceOperation = {
           _id: sharedServiceId, // Use shared ID for same service across workers
           name: operation.name,
-          price: barberShare, // 50% of the original price
-          originalPrice: operation.barberPrice, // Keep original price for reference
+          price: barberShare, // Calculated share based on branch settings
           status: "pending",
           createdAt: new Date()
         };
@@ -100,7 +104,7 @@ export async function POST(req: Request) {
         }
         console.log("🔍 Service operation before push:", JSON.stringify(serviceOperation, null, 2));
         console.log("🔍 Adding service operation to barber:", serviceOperation);
-        console.log("🔍 Barber share calculation: ${operation.barberPrice} * 0.5 = ${barberShare}");
+        console.log("🔍 Barber share calculation: ${operation.barberPrice} * ${barberSharePercentage} / 100 = ${barberShare}");
         console.log("🔍 Service operation _id:", serviceOperation._id?.toString());
         barberUser.serviceOperations.push(serviceOperation);
         
@@ -113,7 +117,7 @@ export async function POST(req: Request) {
         console.log("🔍 Last operation after save:", JSON.stringify(lastOperation, null, 2));
         console.log("🔍 Last operation _id after save:", lastOperation?._id?.toString());
         console.log("🔍 Last operation has _id field:", !!lastOperation?._id);
-        results.push({ workerId: operation.workerId, workerName: barberUser.name, price: barberShare, originalPrice: operation.barberPrice });
+        results.push({ workerId: operation.workerId, workerName: barberUser.name, price: barberShare });
       }
       
       // If washer is assigned, add service to washer's user document
@@ -127,15 +131,18 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: `Washer user not found: ${operation.washerId}` }, { status: 404 });
         }
         
-        // Calculate washer's share (10% of the price)
-        const washerShare = Math.round(operation.washerPrice * 0.1);
+        // Get branch share settings
+        const washerBranch = await Branch.findById(washerUser.branchId);
+        const washerSharePercentage = washerBranch?.shareSettings?.washerShare || 10; // Default to 10% if not set
+        
+        // Calculate washer's share using branch settings
+        const washerShare = Math.round(operation.washerPrice * (washerSharePercentage / 100));
         
         // Add service operation to washer's user document
         const washerServiceOperation = {
           _id: sharedServiceId, // Use shared ID for same service across workers
           name: operation.name,
-          price: washerShare, // 10% of the original price
-          originalPrice: operation.washerPrice, // Keep original price for reference
+          price: washerShare, // Calculated share based on branch settings
           status: "pending",
           createdAt: new Date()
         };
@@ -147,7 +154,7 @@ export async function POST(req: Request) {
         }
         console.log("🔍 Washer service operation before push:", JSON.stringify(washerServiceOperation, null, 2));
         console.log("🔍 Adding service operation to washer:", washerServiceOperation);
-        console.log("🔍 Washer share calculation: ${operation.washerPrice} * 0.1 = ${washerShare}");
+        console.log("🔍 Washer share calculation: ${operation.washerPrice} * ${washerSharePercentage} / 100 = ${washerShare}");
         console.log("🔍 Washer service operation _id:", washerServiceOperation._id?.toString());
         washerUser.serviceOperations.push(washerServiceOperation);
         
@@ -160,7 +167,7 @@ export async function POST(req: Request) {
         console.log("🔍 Last washer operation after save:", JSON.stringify(lastWasherOperation, null, 2));
         console.log("🔍 Last washer operation _id after save:", lastWasherOperation?._id?.toString());
         console.log("🔍 Last washer operation has _id field:", !!lastWasherOperation?._id);
-        results.push({ workerId: operation.washerId, workerName: washerUser.name, price: washerShare, originalPrice: operation.washerPrice });
+        results.push({ workerId: operation.washerId, workerName: washerUser.name, price: washerShare });
       }
     }
 
@@ -318,7 +325,6 @@ export async function GET(req: Request) {
           const operation = {
             name: op?.name || 'Unknown Service',
             price: op?.price || 0,
-            originalPrice: op?.originalPrice || op?.price || 0, // Include original price if available
             status: op?.status || 'pending',
             createdAt: op?.createdAt || new Date(),
             workerName: user.name,

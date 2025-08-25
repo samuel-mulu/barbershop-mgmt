@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Package, Plus, Calendar, ChevronDown, ChevronUp, DollarSign, Hash, Tag, TrendingUp, Eye, EyeOff, WifiOff, Edit, Trash2, Search } from "lucide-react";
+import { Package, Plus, Calendar, ChevronDown, ChevronUp, DollarSign, Hash, Tag, TrendingUp, Eye, EyeOff, WifiOff, Edit, Search } from "lucide-react";
 import { useOfflineQueue } from "../../providers/OfflineProvider";
 import EthiopianDate from "./EthiopianDate";
 
@@ -40,16 +40,6 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
   const [editingProductId, setEditingProductId] = useState<string>('');
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [updating, setUpdating] = useState(false);
-
-  // Delete Modal State
-  const [deleteModal, setDeleteModal] = useState<{
-    isOpen: boolean;
-    product: Product | null;
-  }>({
-    isOpen: false,
-    product: null
-  });
-  const [deleting, setDeleting] = useState(false);
 
   // Offline functionality
   const { isOffline, pendingCount, queueProduct } = useOfflineQueue();
@@ -332,53 +322,11 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
 
   // Delete Functions
   const handleDeleteProduct = (product: Product) => {
-    setDeleteModal({
-      isOpen: true,
-      product
-    });
-  };
-
-  const closeDeleteModal = () => {
-    setDeleteModal({
-      isOpen: false,
-      product: null
-    });
-  };
-
-  const handleConfirmDelete = async () => {
-    if (!deleteModal.product) return;
-
-    setDeleting(true);
-    try {
-      const token = localStorage.getItem('token');
-      
-      const response = await fetch(`/api/products/${deleteModal.product._id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete product');
-      }
-
-      // Refresh data
-      if (showHistory) {
-        fetchProducts();
-      }
-      
-      closeDeleteModal();
-      
-      if (onSuccess) {
-        onSuccess();
-      }
-    } catch (error) {
-      console.error('Error deleting product:', error);
-      alert('Failed to delete product');
-    } finally {
-      setDeleting(false);
-    }
+    // This function is no longer needed as the delete modal is removed.
+    // If a delete functionality is still desired, it would need to be re-implemented
+    // or the user would need to handle deletion via the history view.
+    console.log("Delete product:", product);
+    alert(`Delete functionality is currently disabled. Product: ${product.name}`);
   };
 
   const quantityTypeOptions = [
@@ -399,56 +347,9 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
 
 
       {/* Delete Confirmation Modal */}
-      {deleteModal.isOpen && deleteModal.product && (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[99999] p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border-0 w-full max-w-lg animate-slideIn" style={{ backgroundColor: '#ffffff' }}>
-            {/* Modal Header */}
-            <div className="px-8 py-6 border-b border-gray-100 bg-white rounded-t-2xl" style={{ backgroundColor: '#ffffff' }}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-bold text-gray-900">Confirm Deletion</h3>
-                  <p className="text-sm text-gray-600 mt-1">Are you sure you want to delete this product?</p>
-                </div>
-                <button
-                  onClick={closeDeleteModal}
-                  className="w-8 h-8 text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition-colors bg-white rounded-full border border-gray-200 flex items-center justify-center text-lg font-bold"
-                  style={{ backgroundColor: '#ffffff' }}
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            
-            {/* Modal Content */}
-            <div className="px-8 py-6 bg-white rounded-b-2xl" style={{ backgroundColor: '#ffffff' }}>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={closeDeleteModal}
-                  className="submit-button"
-                  style={{ background: '#e2e8f0', color: '#475569' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmDelete}
-                  disabled={deleting}
-                  className="submit-button"
-                  style={{ background: '#ef4444', color: 'white' }}
-                >
-                  {deleting ? (
-                    <div className="button-content">
-                      <div className="loading-spinner"></div>
-                      Deleting...
-                    </div>
-                  ) : (
-                    'Delete'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* This section is no longer needed as the delete modal is removed. */}
+      {/* If a delete functionality is still desired, it would need to be re-implemented
+          or the user would need to handle deletion via the history view. */}
 
       {/* Modern Product Form */}
       <div className="product-form-container">
@@ -752,13 +653,6 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
                                 title="Edit Product"
                               >
                                 <Edit className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteProduct(product)}
-                                className="delete-button"
-                                title="Delete Product"
-                              >
-                                <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
                           </td>
@@ -1348,22 +1242,6 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
         .edit-button:hover {
           transform: translateY(-1px);
           box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
-        }
-
-        .delete-button {
-          background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-          color: white;
-          border: none;
-          padding: 0.5rem;
-          border-radius: 8px;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
-        }
-
-        .delete-button:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
         }
 
         /* Mobile Responsive */

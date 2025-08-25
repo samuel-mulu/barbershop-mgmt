@@ -131,7 +131,6 @@ export default function OwnerDashboard() {
           <div className="sidebar-header">
             <div className="user-info">
               <p className="user-name">Owner Dashboard</p>
-              <p className="user-id">ID: {ownerId}</p>
             </div>
             <button
               onClick={toggleSidebar}
@@ -210,7 +209,6 @@ export default function OwnerDashboard() {
             </button>
             <div className="top-bar-info">
               <p className="welcome-text">Owner Dashboard</p>
-              <p className="user-id-text">ID: {ownerId}</p>
             </div>
           </div>
 

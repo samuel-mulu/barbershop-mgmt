@@ -34,7 +34,6 @@ interface ServiceOperation {
   workerName: string;
   workerRole: string;
   workerId: string;
-  originalPrice?: number;
 }
 
 export default function BarberDashboard() {

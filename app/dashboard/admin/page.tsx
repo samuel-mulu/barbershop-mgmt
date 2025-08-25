@@ -38,6 +38,7 @@ import ImageUpload from "@/components/ImageUpload";
 import Pagination from "@/components/Pagination";
 import OfflineProvider, { useOfflineQueue, OfflineStatusDisplay } from "../../../providers/OfflineProvider";
 import OfflineBanner from "../../../components/OfflineBanner";
+import { formatEthiopianDate } from "@/utils/ethiopianCalendar";
 
 
 const fetcher = (url: string) => {
@@ -233,6 +234,9 @@ const AdminDashboardContent = React.memo(() => {
   
   // Payment filter state
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
+  
+  // Date filter state
+  const [dateFilter, setDateFilter] = useState<string>("");
   
   // Pagination states for Service Operations History
   const [currentPage, setCurrentPage] = useState(1);
@@ -434,14 +438,43 @@ const AdminDashboardContent = React.memo(() => {
     return combinedOperations;
   }, [safeServiceOperationsHistory]);
   
-  // Filter operations by payment method
+  // Get available dates for filter dropdown
+  const getAvailableDates = (): string[] => {
+    const operations = serviceOperationsHistory || [];
+    const dates = new Set<string>();
+    
+    operations.forEach((operation: ServiceOperation) => {
+      if (operation.createdAt) {
+        const date = new Date(operation.createdAt);
+        const dateString = date.toISOString().split('T')[0]; // YYYY-MM-DD format
+        dates.add(dateString);
+      }
+    });
+    
+    // Sort dates by newest first
+    return Array.from(dates).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  };
+
+  // Filter operations by payment method and date
   const getFilteredOperations = useMemo((): ServiceOperation[] => {
     const combinedOperations = getCombinedOperations;
     return combinedOperations.filter((operation: ServiceOperation) => {
-      if (paymentFilter === "all") return true;
-      return operation.by === paymentFilter;
+      // Filter by payment method
+      if (paymentFilter !== "all" && operation.by !== paymentFilter) {
+        return false;
+      }
+      
+      // Filter by date
+      if (dateFilter && operation.createdAt) {
+        const operationDate = new Date(operation.createdAt).toISOString().split('T')[0];
+        if (operationDate !== dateFilter) {
+          return false;
+        }
+      }
+      
+      return true;
     });
-  }, [getCombinedOperations, paymentFilter]);
+  }, [getCombinedOperations, paymentFilter, dateFilter]);
 
   // Get paginated data
   const getPaginatedOperations = useMemo(() => {
@@ -482,7 +515,7 @@ const AdminDashboardContent = React.memo(() => {
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [paymentFilter]);
+  }, [paymentFilter, dateFilter]);
 
   // Clean up SWR cache on unmount
   useEffect(() => {
@@ -1475,6 +1508,31 @@ const AdminDashboardContent = React.memo(() => {
                   )}
                 </div>
 
+                {/* Date Filter */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">All Dates</option>
+                    {getAvailableDates().map(date => (
+                      <option key={date} value={date}>
+                        {formatEthiopianDate(date)}
+                      </option>
+                    ))}
+                  </select>
+                  {dateFilter && (
+                    <button
+                      onClick={() => setDateFilter("")}
+                      className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
+                      title="Clear date filter"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
                 {/* Polling Status Indicator */}
                 <div className="flex items-center gap-2 text-xs text-gray-600">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
@@ -1482,15 +1540,15 @@ const AdminDashboardContent = React.memo(() => {
 
                 <button
                   onClick={() => mutateHistory()}
-                  className="action-button"
+                  className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors flex items-center gap-1"
                   disabled={loadingHistory}
                 >
                   {loadingHistory ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
                   ) : (
-                    <TrendingUp className="w-4 h-4 mr-2" />
+                    <TrendingUp className="w-3 h-3" />
                   )}
-                  Refresh Now
+                  Refresh
                 </button>
               </div>
             </div>
@@ -1544,15 +1602,15 @@ const AdminDashboardContent = React.memo(() => {
               <div className="empty-state">
                 <Clock className="w-12 h-12 text-slate-400 mx-auto mb-2" />
                 <p className="text-slate-500">
-                  {paymentFilter === "all" 
+                  {paymentFilter === "all" && !dateFilter
                     ? "No pending service operations found" 
-                    : `No ${paymentFilter === "cash" ? "cash" : "mobile banking"} operations found`
+                    : `No operations found for the selected filters`
                   }
                 </p>
                 <p className="text-slate-400 text-sm mt-2">
-                  {paymentFilter === "all" 
+                  {paymentFilter === "all" && !dateFilter
                     ? "All operations may have been completed or there are no operations yet."
-                    : `Try selecting a different payment method or check if there are any ${paymentFilter === "cash" ? "cash" : "mobile banking"} operations.`
+                    : `Try selecting different filters or check if there are any operations matching your criteria.`
                   }
                 </p>
               </div>

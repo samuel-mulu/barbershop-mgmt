@@ -34,7 +34,6 @@ interface ServiceOperation {
   workerName: string;
   workerRole: string;
   workerId: string;
-  originalPrice?: number;
 }
 
 interface UserType {
@@ -303,7 +302,6 @@ export default function WasherDashboard() {
                   <th>#</th>
                   <th>Service</th>
                   <th>Your Share</th>
-                  <th>Original Price</th>
                   <th>Status</th>
                   <th>Date Created</th>
                   </tr>
@@ -311,7 +309,6 @@ export default function WasherDashboard() {
                 <tbody>
                 {getPaginatedOperations.map((operation: ServiceOperation, index: number) => {
                     // Get original price and current share
-                    const originalPrice = operation.originalPrice || operation.price * 10; // If no original price, estimate
                     const washerShare = operation.price; // This is already 10% of original
                     const paginationInfo = getPaginationInfo;
                     const rowNumber = paginationInfo.startItem + index;
@@ -327,11 +324,6 @@ export default function WasherDashboard() {
                       <td>
                         <span className="price-tag earnings">
                             ${washerShare}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="price-tag original">
-                            ${originalPrice}
                         </span>
                       </td>
                       <td>

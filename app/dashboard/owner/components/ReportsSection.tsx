@@ -109,6 +109,9 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
   // Date filter state
   const [dateFilter, setDateFilter] = useState<string>('');
   
+  // Payment method filter state
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('');
+  
   // Auto-refresh state (hidden polling)
   const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
   
@@ -200,6 +203,11 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
           return;
         }
         
+        // Apply payment method filter if set
+        if (paymentMethodFilter && operation.by !== paymentMethodFilter) {
+          return;
+        }
+        
         if (!grouped[ethiopianDateKey]) {
           grouped[ethiopianDateKey] = [];
         }
@@ -216,7 +224,11 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
     
     // Sort operations within each date group by newest first
     Object.keys(grouped).forEach(dateKey => {
-      grouped[dateKey].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      grouped[dateKey].sort((a, b) => {
+        const dateA = new Date(a.createdAt);
+        const dateB = new Date(b.createdAt);
+        return dateB.getTime() - dateA.getTime();
+      });
     });
     
     return grouped;
@@ -441,6 +453,11 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
         return;
       }
       
+      // Apply payment method filter if set
+      if (paymentMethodFilter && operation.by !== paymentMethodFilter) {
+        return;
+      }
+      
       if (!grouped[ethiopianDateKey]) {
         grouped[ethiopianDateKey] = [];
       }
@@ -501,21 +518,33 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
   // Get available dates for filter dropdown
   const getAvailableDates = (): string[] => {
     const operations = getOperations();
-    const dates = new Set<string>();
+    const dateMap = new Map<string, Date>();
     
     operations.forEach(operation => {
       const date = new Date(operation.createdAt);
       const ethiopian = gregorianToEthiopian(date);
       const ethiopianDateKey = `${ethiopian.day} ${ethiopian.monthName} ${ethiopian.year}`;
-      dates.add(ethiopianDateKey);
+      dateMap.set(ethiopianDateKey, date);
     });
     
-    // Sort dates by newest first
-    return Array.from(dates).sort((a, b) => {
-      const dateA = new Date(a.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(a.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + a.split(' ')[0].padStart(2, '0'));
-      const dateB = new Date(b.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(b.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + b.split(' ')[0].padStart(2, '0'));
-      return dateB.getTime() - dateA.getTime();
+    // Sort dates by newest first using the original Gregorian dates
+    return Array.from(dateMap.entries())
+      .sort((a, b) => b[1].getTime() - a[1].getTime())
+      .map(([ethiopianDate]) => ethiopianDate);
+  };
+
+  // Get available payment methods for filter dropdown
+  const getAvailablePaymentMethods = (): string[] => {
+    const operations = getOperations();
+    const paymentMethods = new Set<string>();
+    
+    operations.forEach(operation => {
+      if (operation.by) {
+        paymentMethods.add(operation.by);
+      }
     });
+    
+    return Array.from(paymentMethods);
   };
 
   if (!selectedUser) {
@@ -640,6 +669,21 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                   ))}
                 </select>
               </div>
+              <div className="filter-group">
+                <label className="filter-label">💳 Filter by Payment:</label>
+                <select
+                  value={paymentMethodFilter}
+                  onChange={(e) => setPaymentMethodFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="">All Payment Methods</option>
+                  {getAvailablePaymentMethods().map(method => (
+                    <option key={method} value={method}>
+                      {method === 'cash' ? '💵 Cash' : '📱 Mobile Banking'}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
       {selectedOperations.size > 0 && (
@@ -672,10 +716,18 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
             {(() => {
               const operations = getOperations();
               const groupedOperations = groupOperationsByDate(operations);
+              
+              // Sort dates by newest first using the original Gregorian dates
               const dates = Object.keys(groupedOperations).sort((a, b) => {
-                // Sort by Ethiopian date (newest first)
-                const dateA = new Date(a.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(a.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + a.split(' ')[0].padStart(2, '0'));
-                const dateB = new Date(b.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(b.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + b.split(' ')[0].padStart(2, '0'));
+                // Get the first operation from each date group to get the original Gregorian date
+                const firstOperationA = groupedOperations[a][0];
+                const firstOperationB = groupedOperations[b][0];
+                
+                if (!firstOperationA || !firstOperationB) return 0;
+                
+                const dateA = new Date(firstOperationA.createdAt);
+                const dateB = new Date(firstOperationB.createdAt);
+                
                 return dateB.getTime() - dateA.getTime();
               });
 
@@ -775,7 +827,11 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                           )}
                                           <span className="operation-date">
                                             <Calendar className="w-3 h-3 mr-1" />
-                                            <EthiopianDate dateString={operation.createdAt} showTime={true} showWeekday={false} />
+                                            {date} - {new Date(operation.createdAt).toLocaleTimeString('en-US', { 
+                                              hour: '2-digit', 
+                                              minute: '2-digit',
+                                              hour12: true 
+                                            })}
                                           </span>
                                         </div>
                                             </div>
@@ -825,7 +881,11 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                         <div className="detail-item">
                                           <label>Created At</label>
                                           <div>
-                                            <EthiopianDate dateString={operation.createdAt} showTime={true} showWeekday={false} />
+                                            {date} - {new Date(operation.createdAt).toLocaleTimeString('en-US', { 
+                                              hour: '2-digit', 
+                                              minute: '2-digit',
+                                              hour12: true 
+                                            })}
                                             </div>
                                         </div>
                                         <div className="detail-item">
@@ -886,15 +946,38 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                   ))}
                 </select>
               </div>
+              <div className="filter-group">
+                <label className="filter-label">💳 Filter by Payment:</label>
+                <select
+                  value={paymentMethodFilter}
+                  onChange={(e) => setPaymentMethodFilter(e.target.value)}
+                  className="filter-select"
+                >
+                  <option value="">All Payment Methods</option>
+                  {getAvailablePaymentMethods().map(method => (
+                    <option key={method} value={method}>
+                      {method === 'cash' ? '💵 Cash' : '📱 Mobile Banking'}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
         
         {(() => {
           const finishedOperations = getFinishedOperations();
               const groupedFinished = groupFinishedOperationsByDate(finishedOperations);
+              
+              // Sort dates by newest first using the original Gregorian dates
               const finishedDates = Object.keys(groupedFinished).sort((a, b) => {
-                // Sort by Ethiopian date (newest first)
-                const dateA = new Date(a.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(a.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + a.split(' ')[0].padStart(2, '0'));
-                const dateB = new Date(b.split(' ')[2] + '-' + (ETHIOPIAN_MONTHS.indexOf(b.split(' ')[1]) + 1).toString().padStart(2, '0') + '-' + b.split(' ')[0].padStart(2, '0'));
+                // Get the first operation from each date group to get the original Gregorian date
+                const firstOperationA = groupedFinished[a][0];
+                const firstOperationB = groupedFinished[b][0];
+                
+                if (!firstOperationA || !firstOperationB) return 0;
+                
+                const dateA = new Date(firstOperationA.finishedDate || firstOperationA.createdAt);
+                const dateB = new Date(firstOperationB.finishedDate || firstOperationB.createdAt);
+                
                 return dateB.getTime() - dateA.getTime();
               });
           
@@ -997,7 +1080,11 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
                                 <div className="operation-timeline">
                                   <div className="timeline-item">
                                     <Calendar className="w-3 h-3" />
-                                    <span>Created: <EthiopianDate dateString={operation.createdAt} showTime={true} showWeekday={false} /></span>
+                                    <span>Created: {date} - {new Date(operation.createdAt).toLocaleTimeString('en-US', { 
+                                      hour: '2-digit', 
+                                      minute: '2-digit',
+                                      hour12: true 
+                                    })}</span>
                               </div>
                                   {operation.finishedDate && (
                                     <div className="timeline-item">
@@ -1216,6 +1303,8 @@ export default function ReportsSection({ selectedUser, onBackToStaff, viewMode }
           border-radius: 12px;
           border: 1px solid #cbd5e1;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+          gap: 1.5rem;
+          flex-wrap: wrap;
         }
 
         .filter-group {
