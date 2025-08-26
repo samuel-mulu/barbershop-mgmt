@@ -1,12 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Eye, EyeOff, Scissors } from "lucide-react";
+import { Scissors } from "lucide-react";
 
 export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   // Prevent hydration mismatch
@@ -126,18 +125,10 @@ export default function LoginPage() {
 
           {/* Password Input */}
           <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors z-10"
-              suppressHydrationWarning
-            >
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
             <input
               required
-              type={showPassword ? "text" : "password"}
-              className="input pl-12"
+              type="password"
+              className="input"
               name="password"
               id="password"
               placeholder="Password"
