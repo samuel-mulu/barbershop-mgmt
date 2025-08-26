@@ -4,6 +4,7 @@ import BranchesSection from "./components/BranchesSection";
 import StaffSection from "./components/StaffSection";
 import ReportsSection from "./components/ReportsSection";
 import OwnerDataSection from "./components/OwnerDataSection";
+import UserManagement from "./components/UserManagement";
 import { 
   Building2, 
   Users, 
@@ -11,7 +12,8 @@ import {
   LogOut,
   Menu,
   X,
-  UserPlus
+  UserPlus,
+  UserCog
 } from "lucide-react";
 
 interface Branch {
@@ -53,7 +55,7 @@ interface User {
 export default function OwnerDashboard() {
   // ===== STATE MANAGEMENT =====
   const [ownerId, setOwnerId] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<'branches' | 'staff' | 'reports' | 'ownerData'>('branches');
+  const [activeSection, setActiveSection] = useState<'branches' | 'staff' | 'reports' | 'ownerData' | 'userManagement'>('branches');
   const [selectedBranch, setSelectedBranch] = useState<Branch | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [viewMode, setViewMode] = useState<'pending' | 'finished'>('pending');
@@ -176,6 +178,17 @@ export default function OwnerDashboard() {
             
             <button
               onClick={() => {
+                setActiveSection('userManagement');
+                setSidebarOpen(false);
+              }}
+              className={`sidebar-button ${activeSection === 'userManagement' ? 'active' : ''}`}
+            >
+              <UserCog className="w-4 h-4 mb-1" />
+              <span>User Management</span>
+            </button>
+            
+            <button
+              onClick={() => {
                 window.location.href = "/register";
               }}
               className="sidebar-button register"
@@ -247,6 +260,10 @@ export default function OwnerDashboard() {
                   dataType={selectedDataType}
                   onBackToStaff={handleBackToStaffFromOwnerData}
                 />
+              )}
+
+              {activeSection === 'userManagement' && (
+                <UserManagement ownerId={ownerId} />
               )}
             </div>
           </div>

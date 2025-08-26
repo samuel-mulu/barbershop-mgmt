@@ -277,6 +277,12 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
       return;
     }
     
+    // Validate that quantity is not decreased
+    if (updateData.quantity < editingProduct.quantity) {
+      alert(`Cannot decrease quantity. Current quantity is ${editingProduct.quantity}. You can only increase it.`);
+      return;
+    }
+    
     console.log("🔍 handleUpdateProduct called with:", updateData);
     console.log("🔍 Product to update:", editingProduct);
     
@@ -311,11 +317,14 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
       if (onSuccess) {
         onSuccess();
       }
+      
+      console.log("✅ Product updated successfully");
     } catch (error) {
       console.error('Error updating product:', error);
       alert('Failed to update product');
     } finally {
       setUpdating(false);
+      setLoading(false); // Also reset the main loading state
     }
   };
 
@@ -398,16 +407,26 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
               <label className="field-label">
                 <Hash className="w-4 h-4" />
                 Quantity
+                {isEditMode && editingProduct && (
+                  <span className="current-quantity-indicator">
+                    (Current: {editingProduct.quantity})
+                  </span>
+                )}
               </label>
-                                                          <input
-                 type="number"
-                 value={formData.quantity || ''}
-                 onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
-                 className="field-input"
-                  placeholder="e.g., 50, 100, 25"
-                 min="0"
-                 required
-               />
+              <input
+                type="number"
+                value={formData.quantity || ''}
+                onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 0 })}
+                className="field-input"
+                placeholder="e.g., 50, 100, 25"
+                min={isEditMode && editingProduct ? editingProduct.quantity : 0}
+                required
+              />
+              {isEditMode && editingProduct && (
+                <div className="quantity-help-text">
+                  ⚠️ Cannot decrease quantity below {editingProduct.quantity}
+                </div>
+              )}
             </div>
 
             {/* Quantity Type */}
@@ -1242,6 +1261,19 @@ export default function EnhancedProductManagement({ onSuccess, onDataChange }: P
         .edit-button:hover {
           transform: translateY(-1px);
           box-shadow: 0 4px 8px rgba(59, 130, 246, 0.3);
+        }
+
+        .current-quantity-indicator {
+          font-size: 0.75rem;
+          color: #64748b;
+          margin-left: 0.5rem;
+        }
+
+        .quantity-help-text {
+          font-size: 0.75rem;
+          color: #ef4444;
+          margin-top: 0.5rem;
+          font-weight: 500;
         }
 
         /* Mobile Responsive */

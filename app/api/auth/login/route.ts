@@ -27,6 +27,18 @@ export async function POST(req: Request) {
 
   console.log("✅ User found:", { _id: user._id, name: user.name, role: user.role, branchId: user.branchId });
 
+  // Check if user is deactivated
+  if (user.isActive === false) {
+    console.log("❌ User is deactivated:", user.name);
+    return new Response(JSON.stringify({ error: "Account is deactivated. Please contact your administrator." }), { status: 403 });
+  }
+
+  // Check if user is suspended
+  if (user.isSuspended === true) {
+    console.log("❌ User is suspended:", user.name);
+    return new Response(JSON.stringify({ error: "Account is suspended. Please contact your administrator." }), { status: 403 });
+  }
+
   if (checkOnly) {
     // Step 1: Only return user info for role check
     return new Response(JSON.stringify({ user: { _id: user._id, name: user.name, phone: user.phone, role: user.role } }), {

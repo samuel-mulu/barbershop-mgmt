@@ -68,6 +68,8 @@ interface UserDocument extends mongoose.Document {
   password: string;
   role: "owner" | "admin" | "barber" | "washer" | "customer";
   branchId?: mongoose.Types.ObjectId;
+  isActive?: boolean;
+  isSuspended?: boolean;
   serviceOperations: ServiceOperation[];
   adminServiceOperations: AdminServiceOperation[];
   products: Product[];
@@ -169,6 +171,8 @@ const userSchema = new mongoose.Schema({
   password: { type: String, required: true },
   role: { type: String, enum: ["owner", "admin", "barber", "washer", "customer"], default: "customer" },
   branchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch" }, // Only required for admin/barber/washer
+  isActive: { type: Boolean, default: true },
+  isSuspended: { type: Boolean, default: false },
   serviceOperations: { type: [serviceOperationSchema], default: [] }, // Worker service operations
   adminServiceOperations: { type: [adminServiceOperationSchema], default: [] }, // Admin service operations
   products: { type: [productSchema], default: [] }, // Products subcollection

@@ -12,6 +12,16 @@ export default function LoginPage() {
   // Prevent hydration mismatch
   useEffect(() => {
     setMounted(true);
+    
+    // Check for error parameters in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const error = urlParams.get('error');
+    
+    if (error === 'deactivated') {
+      alert('⚠️ Your account has been deactivated.\n\nPlease contact your administrator to restore access.');
+    } else if (error === 'suspended') {
+      alert('⚠️ Your account has been suspended.\n\nPlease contact your administrator to restore access.');
+    }
   }, []);
 
   const handleLogin = async () => {
@@ -37,7 +47,13 @@ export default function LoginPage() {
         console.log("🔍 Redirecting to dashboard:", dashboardPath);
         window.location.href = dashboardPath;
       } else {
-        alert(data.error || "Login failed");
+        // Handle specific error messages
+        const errorMessage = data.error || "Login failed";
+        if (errorMessage.includes("deactivated") || errorMessage.includes("suspended")) {
+          alert(`⚠️ ${errorMessage}\n\nPlease contact your administrator to restore access.`);
+        } else {
+          alert(errorMessage);
+        }
       }
     } catch (error) {
       console.error("Login error:", error);
