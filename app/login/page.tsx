@@ -185,6 +185,33 @@ export default function LoginPage() {
           border: 5px solid rgb(255, 255, 255);
           box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 30px 30px -20px;
           margin: 20px;
+          /* Ensure proper scaling */
+          max-width: 90vw;
+          transform: translateZ(0);
+        }
+
+        /* Mobile responsive adjustments */
+        @media (max-width: 480px) {
+          .container {
+            max-width: 95vw;
+            margin: 10px;
+            padding: 20px;
+            border-radius: 20px;
+          }
+          
+          .heading {
+            font-size: 24px;
+          }
+          
+          .form .input {
+            font-size: 16px; /* Prevent zoom on iOS */
+            padding: 12px 16px;
+          }
+          
+          .form .login-button {
+            font-size: 16px; /* Prevent zoom on iOS */
+            padding: 12px 20px;
+          }
         }
 
         .heading {

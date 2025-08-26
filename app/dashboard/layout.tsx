@@ -15,7 +15,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <li><a href="/dashboard/profile" className="block hover:bg-gray-700 p-2 rounded">Profile</a></li>
         </ul>
       </aside>
-      <main className="flex-1 p-2 sm:p-4 w-full overflow-x-hidden">{children}</main>
+      <main className="flex-1 p-2 sm:p-4 w-full overflow-x-hidden max-w-full">
+        <div className="max-w-full">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }

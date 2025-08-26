@@ -8,6 +8,10 @@
 body {
   overflow-x: hidden;
   width: 100%;
+  /* Ensure proper scaling */
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .container {
@@ -19,8 +23,10 @@ body {
   box-shadow: rgba(133, 189, 215, 0.8784313725) 0px 15px 15px -10px;
   margin-bottom: 15px;
   width: 100%;
-  max-width: 100%;
+  max-width: 100vw;
   overflow: hidden;
+  /* Ensure proper scaling */
+  transform: translateZ(0);
 }
 
 /* Tablet and desktop styles */
@@ -994,4 +1000,59 @@ body {
   max-height: 70vh;
   object-fit: contain;
   display: block;
+}
+
+/* Mobile-specific improvements */
+@media (max-width: 767px) {
+  /* Ensure proper touch targets */
+  .action-button, .icon-button, .header-button {
+    min-height: 44px;
+    min-width: 44px;
+    font-size: 16px; /* Prevent zoom on iOS */
+  }
+  
+  /* Improve form elements */
+  input, select, textarea {
+    font-size: 16px; /* Prevent zoom on iOS */
+    max-width: 100%;
+  }
+  
+  /* Ensure tables scale properly */
+  table {
+    font-size: 12px;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  
+  /* Improve card scaling */
+  .card, .section {
+    max-width: 100vw;
+    margin: 0 5px;
+  }
+  
+  /* Better spacing for mobile */
+  .container {
+    margin: 5px;
+    padding: 10px;
+  }
+}
+
+/* Ensure proper scaling on very small screens */
+@media (max-width: 480px) {
+  .container {
+    margin: 2px;
+    padding: 8px;
+  }
+  
+  .heading {
+    font-size: 18px;
+  }
+  
+  .section-title {
+    font-size: 14px;
+  }
+  
+  .subsection-title {
+    font-size: 12px;
+  }
 }
