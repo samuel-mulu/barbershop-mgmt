@@ -114,6 +114,27 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
   // Polling for real-time updates
   const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
 
+  // 🏦 SIMPLE QUANTITY MANAGEMENT SYSTEM
+  // ======================================
+  // Rule 1: When entering edit mode → Restore quantity to product
+  // Rule 2: When saving edit → Subtract new quantity from product  
+  // Rule 3: When canceling edit → Restore quantity back to product
+  // Rule 4: When deleting sale → Restore quantity back to product
+  // ======================================
+
+  // Loading states for different operations
+  const [quantityLoading, setQuantityLoading] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+
+  // 🏦 SIMPLE QUANTITY MANAGEMENT SYSTEM
+  // ======================================
+  // Rule 1: When entering edit mode → Restore quantity to product
+  // Rule 2: When saving edit → Subtract new quantity from product  
+  // Rule 3: When canceling edit → Restore quantity back to product
+  // Rule 4: When deleting sale → Restore quantity back to product
+  // ======================================
+
 
 
   const fetchProducts = async () => {
@@ -193,7 +214,12 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
     }
   }, [showHistory]);
 
-
+  // Refresh products when products change to ensure quantity synchronization
+  useEffect(() => {
+    if (products.length > 0) {
+      refreshAvailableQuantity();
+    }
+  }, [products, isEditMode, originalSaleData]);
 
   // Handle rollback when component unmounts or user navigates away
   useEffect(() => {
@@ -229,12 +255,15 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
   const handleProductSelect = (productId: string) => {
     const selectedProduct = products.find(p => p._id === productId);
     if (selectedProduct) {
+      // Use the actual product quantity as available quantity
+      const availableQuantity = selectedProduct.quantity;
+      
       const saleData = {
         productId: selectedProduct._id,
         productName: selectedProduct.name,
         soldQuantity: 0,
         pricePerUnit: selectedProduct.pricePerUnit,
-        availableQuantity: selectedProduct.quantity,
+        availableQuantity: availableQuantity,
         status: 'pending' as 'pending' | 'finished'
       };
       setProductSaleData(saleData);
@@ -246,50 +275,38 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
     setLoading(true);
 
     try {
-             // Validate product sale data
-       if (saleType === 'product_sale') {
-         if (!productSaleData.productId || productSaleData.soldQuantity <= 0) {
-           alert('Please select a product and enter a valid quantity');
-           setLoading(false);
-           return;
-         }
-         
-         if (productSaleData.pricePerUnit <= 0) {
-           alert('Cannot sell product with $0 price. Please update the product price first.');
-           setLoading(false);
-           return;
-         }
-         
-         // For edit mode, validate against the restored quantity
-         if (isEditMode && originalSaleData) {
-           // The availableQuantity should already be correct after restoration
-           // We need to check if the new quantity is valid
-           const maxAllowedQuantity = productSaleData.availableQuantity;
-           if (productSaleData.soldQuantity > maxAllowedQuantity) {
-             alert(`Insufficient quantity. Available: ${maxAllowedQuantity}, Requested: ${productSaleData.soldQuantity}`);
-             setLoading(false);
-             return;
-           }
-         } else {
-           // For new sales, validate against current product quantity
-           const currentProduct = products.find(p => p._id === productSaleData.productId);
-           if (currentProduct && productSaleData.soldQuantity > currentProduct.quantity) {
-             alert(`Insufficient quantity. Available: ${currentProduct.quantity}, Requested: ${productSaleData.soldQuantity}`);
-             setLoading(false);
-             return;
-           }
-         }
-         
+      // 🏦 VALIDATE BANK TRANSACTION
+      if (saleType === 'product_sale') {
+        if (!productSaleData.productId || productSaleData.soldQuantity <= 0) {
+          alert('Please select a product and enter a valid quantity');
+          setLoading(false);
+          return;
+        }
+        
+        if (productSaleData.pricePerUnit <= 0) {
+          alert('Cannot sell product with $0 price. Please update the product price first.');
+          setLoading(false);
+          return;
+        }
+        
+        // 🏦 CHECK AVAILABLE QUANTITY (simple validation)
+        const currentQuantity = getCurrentProductQuantity(productSaleData.productId);
+        
+        if (currentQuantity < productSaleData.soldQuantity) {
+          alert(`Insufficient quantity. Available: ${currentQuantity}, Requested: ${productSaleData.soldQuantity}`);
+          setLoading(false);
+          return;
+        }
+      } else {
+        // Validate withdrawal data
+        if (!withdrawalData.reason.trim() || withdrawalData.amount <= 0) {
+          alert('Please enter a valid reason and amount for withdrawal');
+          setLoading(false);
+          return;
+        }
+      }
 
-       } else {
-         // Validate withdrawal data
-         if (!withdrawalData.reason.trim() || withdrawalData.amount <= 0) {
-           alert('Please enter a valid reason and amount for withdrawal');
-           setLoading(false);
-           return;
-         }
-       }
-
+      // 🏦 PREPARE TRANSACTION DATA
       const saleData = saleType === 'product_sale' 
         ? { 
             type: saleType, 
@@ -304,8 +321,12 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           }
         : { type: saleType, reason: withdrawalData.reason, amount: withdrawalData.amount };
 
-      // If offline, queue the operation
+      // 🏦 OFFLINE MODE: Queue transaction
       if (isOffline) {
+        if (saleType === 'product_sale') {
+          await handleOfflineQuantityUpdate(productSaleData.productId, productSaleData.soldQuantity);
+        }
+        
         await queueSale(saleData);
         
         // Reset form
@@ -331,93 +352,123 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
         return;
       }
 
-      // Online submission
+      // 🏦 ONLINE MODE: Process transaction
       const token = localStorage.getItem('token');
       
       if (saleType === 'product_sale') {
-          if (isEditMode && editingRecordId) {
-            // UPDATE: Calculate the quantity to subtract from product
-            // Logic: 
-            // 1. Original quantity was restored when edit started
-            // 2. Now we need to subtract the NEW sold quantity from the product
-            // 3. The API expects the amount to subtract from product quantity
-            
-            const quantityToSubtract = productSaleData.soldQuantity;
-            
-            console.log('🔧 Edit Mode Quantity Calculation:', {
-              originalSold: originalSaleData!.soldQuantity,
-              newSold: productSaleData.soldQuantity,
-              quantityToSubtract: quantityToSubtract,
-              currentAvailable: productSaleData.availableQuantity
-            });
-            
-            // Update existing product sale
-            const updateData = {
-              productName: productSaleData.productName,
-              soldQuantity: productSaleData.soldQuantity,
-              pricePerUnit: productSaleData.pricePerUnit,
-              totalSoldMoney: productSaleData.soldQuantity * productSaleData.pricePerUnit,
-              quantityDifference: quantityToSubtract, // Amount to subtract from product
-              productId: productSaleData.productId,
-              by: paymentMethod,
-              paymentImageUrl: paymentImageUrl || undefined,
-              status: 'pending' // Always set to pending by default
-            };
-            
-            // Debug: Log the update data being sent
-            console.log('Sending update data:', updateData);
-            
-            const saleResponse = await fetch(`/api/product-sales/${editingRecordId}`, {
-              method: 'PUT',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify(updateData)
-            });
+        if (isEditMode && editingRecordId) {
+          // 🏦 EDIT MODE: Subtract new quantity from product (since we restored it when entering edit)
+          console.log('🏦 [EDIT] Processing edit transaction');
+          
+          // 🏦 STEP 1: SUBTRACT NEW QUANTITY FROM PRODUCT
+          console.log('🏦 [EDIT] Subtracting new quantity:', productSaleData.soldQuantity);
+          
+          const subtractResponse = await fetch('/api/products/update-quantity', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              productUpdates: [{ productId: productSaleData.productId, quantitySold: productSaleData.soldQuantity }] // Positive = subtract
+            })
+          });
 
-            if (!saleResponse.ok) {
-              const errorData = await saleResponse.json();
-              throw new Error(errorData.error || 'Failed to update product sale');
+          if (!subtractResponse.ok) {
+            throw new Error('Failed to update product quantity');
+          }
+          
+          console.log('✅ [EDIT] Product quantity updated successfully');
+          
+          // 🏦 STEP 2: UPDATE SALE RECORD
+          const updateData = {
+            productName: productSaleData.productName,
+            soldQuantity: productSaleData.soldQuantity,
+            pricePerUnit: productSaleData.pricePerUnit,
+            totalSoldMoney: productSaleData.soldQuantity * productSaleData.pricePerUnit,
+            productId: productSaleData.productId,
+            by: paymentMethod,
+            paymentImageUrl: paymentImageUrl || undefined,
+            status: 'pending'
+          };
+          
+          const saleResponse = await fetch(`/api/product-sales/${editingRecordId}`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(updateData)
+          });
+
+          if (!saleResponse.ok) {
+            // 🏦 ROLLBACK: If sale update fails, restore quantity back
+            console.error('❌ [EDIT] Sale update failed, rolling back quantity');
+            
+            try {
+              const rollbackResponse = await fetch('/api/products/update-quantity', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  productUpdates: [{ productId: productSaleData.productId, quantitySold: -productSaleData.soldQuantity }] // Negative = add back
+                })
+              });
+              
+              if (rollbackResponse.ok) {
+                console.log('✅ [EDIT] Quantity rollback successful');
+              }
+            } catch (rollbackError) {
+              console.error('❌ [EDIT] Quantity rollback failed:', rollbackError);
             }
             
-            // Refresh products to show updated quantities after edit
-            await fetchProducts();
-        } else {
-          // Create new product sale - Update quantity FIRST, then create sale
-          
-          // Step 1: Update product quantity FIRST
-          const quantityResponse = await fetch('/api/products/update-quantity', {
-           method: 'POST',
-           headers: {
-             'Content-Type': 'application/json',
-             'Authorization': `Bearer ${token}`
-           },
-           body: JSON.stringify({
-              productUpdates: [{
-               productId: productSaleData.productId,
-                quantitySold: productSaleData.soldQuantity
-             }]
-           })
-         });
-
-          if (!quantityResponse.ok) {
-            const quantityError = await quantityResponse.json();
-            throw new Error(quantityError.error || 'Failed to update product quantity');
+            const errorData = await saleResponse.json();
+            throw new Error(errorData.error || 'Failed to update sale record');
           }
+          
+          console.log('✅ [EDIT] Sale record updated successfully');
+          await fetchProducts(); // Refresh products
+          
+        } else {
+          // 🏦 NEW SALE: Withdraw from bank + Create transaction record
+          console.log('🏦 [NEW SALE] Processing new sale transaction');
+          
+          // 🏦 STEP 1: SUBTRACT QUANTITY FROM PRODUCT
+          console.log('🏦 [NEW SALE] Subtracting quantity from product:', productSaleData.soldQuantity);
+          
+          const subtractResponse = await fetch('/api/products/update-quantity', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              productUpdates: [{ productId: productSaleData.productId, quantitySold: productSaleData.soldQuantity }] // Positive = subtract
+            })
+          });
 
-          // Step 2: Create the sale record
+          if (!subtractResponse.ok) {
+            throw new Error('Failed to update product quantity');
+          }
+          
+          console.log('✅ [NEW SALE] Product quantity updated successfully');
+          
+          // 🏦 STEP 2: CREATE SALE RECORD
           const requestBody = {
             productSales: [{
               productId: productSaleData.productId,
               productName: productSaleData.productName,
               soldQuantity: productSaleData.soldQuantity,
               pricePerUnit: productSaleData.pricePerUnit,
-              status: 'pending' // Always set to pending by default
+              status: 'pending'
             }],
             by: paymentMethod,
             paymentImageUrl: paymentImageUrl || undefined
           };
+          
+          console.log('🏦 [NEW SALE] Creating sale record:', requestBody);
           
           const saleResponse = await fetch('/api/product-sales', {
             method: 'POST',
@@ -429,36 +480,37 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           });
 
           if (!saleResponse.ok) {
-            // If sale creation fails, we need to rollback the quantity update
-            console.error('🛒 Sale creation failed, rolling back quantity update');
-            const rollbackResponse = await fetch('/api/products/update-quantity', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            productUpdates: [{
-              productId: productSaleData.productId,
-                  quantitySold: -productSaleData.soldQuantity // Negative to add back
-            }]
-          })
-        });
-
-            if (!rollbackResponse.ok) {
-              console.error('🛒 Failed to rollback quantity update');
-        }
+            // 🏦 ROLLBACK: If sale creation fails, restore quantity back
+            console.error('❌ [NEW SALE] Sale creation failed, rolling back quantity');
             
-            throw new Error('Failed to record product sale');
-        }
+            try {
+              const rollbackResponse = await fetch('/api/products/update-quantity', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                  productUpdates: [{ productId: productSaleData.productId, quantitySold: -productSaleData.soldQuantity }] // Negative = add back
+                })
+              });
+              
+              if (rollbackResponse.ok) {
+                console.log('✅ [NEW SALE] Quantity rollback successful');
+              }
+            } catch (rollbackError) {
+              console.error('❌ [NEW SALE] Quantity rollback failed:', rollbackError);
+            }
+            
+            const saleError = await saleResponse.json();
+            throw new Error(saleError.error || 'Failed to create sale record');
+          }
 
-        // Refresh products to show updated quantities
-          await fetchProducts();
+          console.log('✅ [NEW SALE] Sale record created successfully');
         }
       } else {
-        // Handle withdrawal
+        // Handle withdrawal (no quantity involved)
         if (isEditMode && editingRecordId) {
-          // Update existing withdrawal
           const response = await fetch(`/api/withdrawals/${editingRecordId}`, {
             method: 'PUT',
             headers: {
@@ -475,26 +527,25 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
             throw new Error('Failed to update withdrawal');
           }
         } else {
-          // Create new withdrawal
-        const response = await fetch('/api/withdrawals', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            reason: withdrawalData.reason,
-            amount: withdrawalData.amount
-          })
-        });
+          const response = await fetch('/api/withdrawals', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              reason: withdrawalData.reason,
+              amount: withdrawalData.amount
+            })
+          });
 
-        if (!response.ok) {
-          throw new Error('Failed to record withdrawal');
+          if (!response.ok) {
+            throw new Error('Failed to record withdrawal');
           }
         }
       }
 
-      // Reset form and exit edit mode if editing
+      // 🏦 TRANSACTION COMPLETE: Reset form and refresh data
       if (isEditMode) {
         setIsEditMode(false);
         setEditingRecordId(null);
@@ -518,7 +569,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
         setWithdrawalData({ reason: '', amount: 0 });
       }
       
-      // Refresh data after successful operation
+      // Refresh data after successful transaction
       await fetchSalesData();
       await fetchProducts();
       
@@ -528,8 +579,15 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
       if (onSuccess) {
         onSuccess();
       }
+      
+      console.log('🎉 [BANK] Transaction completed successfully!');
+      
     } catch (error) {
-      console.error('Error recording sale:', error);
+      console.error('❌ [BANK] Transaction failed:', error);
+      
+      // Show user-friendly error message
+      const errorMessage = error instanceof Error ? error.message : 'Failed to record sale';
+      console.error('User error message:', errorMessage);
       
       // Fallback to offline queue
       if (!isOffline) {
@@ -542,7 +600,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                   productName: productSaleData.productName,
                   soldQuantity: productSaleData.soldQuantity,
                   pricePerUnit: productSaleData.pricePerUnit,
-                  status: 'pending' // Always set to pending by default
+                  status: 'pending'
                 }],
                 by: paymentMethod,
                 paymentImageUrl: paymentImageUrl || undefined
@@ -572,10 +630,10 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           }
         } catch (queueError) {
           console.error('Failed to queue sale:', queueError);
-          alert('Failed to record sale');
+          alert('Failed to record sale. Please try again.');
         }
       } else {
-        alert(error instanceof Error ? error.message : 'Failed to record sale');
+        alert(errorMessage);
       }
     } finally {
       setLoading(false);
@@ -583,9 +641,13 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
   };
 
   const updateSoldQuantity = (quantity: number) => {
+    // Validate quantity doesn't exceed available stock
+    const maxQuantity = getCurrentProductQuantity(productSaleData.productId);
+    const validQuantity = Math.min(Math.max(0, quantity), maxQuantity);
+    
     setProductSaleData({
       ...productSaleData,
-      soldQuantity: quantity
+      soldQuantity: validQuantity
     });
   };
 
@@ -637,170 +699,160 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
   };
 
   // Edit Functions
-    const handleEditRecord = async (record: ProductSale | Withdrawal, recordType: 'product_sale' | 'withdrawal') => {
-    setIsEditMode(true);
-    setEditingRecordId(record._id);
-    setEditingRecordType(recordType);
+  const handleEditRecord = async (record: ProductSale | Withdrawal, recordType: 'product_sale' | 'withdrawal') => {
+    setEditLoading(true);
+    
+    try {
+      console.log('🏦 [EDIT] Starting edit mode for record:', record._id);
+      
+      setIsEditMode(true);
+      setEditingRecordId(record._id);
+      setEditingRecordType(recordType);
 
-    if (recordType === 'product_sale') {
-      const saleRecord = record as ProductSale;
-      
-      // Find the product by name to get the productId
-      const product = products.find(p => p.name === saleRecord.productName);
-      
-      if (!product) {
-        alert('Product not found. Please refresh the page and try again.');
-        return;
-      }
-      
-      // Store original sale data for quantity management
-      setOriginalSaleData({ 
-        soldQuantity: saleRecord.soldQuantity, 
-        productId: product._id,
-        productName: saleRecord.productName
-      });
-      
-      // Store the current product quantity before restoration
-      const currentProductQuantity = product.quantity;
-      
-      setProductSaleData({
-        productId: product._id,
-        productName: saleRecord.productName,
-        soldQuantity: saleRecord.soldQuantity,
-        pricePerUnit: saleRecord.pricePerUnit,
-        availableQuantity: currentProductQuantity + saleRecord.soldQuantity, // Available after restoration
-        status: saleRecord.status || 'pending'
-      });
-      
-      // Correctly set payment method and image URL from the record
-      setPaymentMethod(saleRecord.by || 'cash');
-      setPaymentImageUrl(saleRecord.paymentImageUrl || '');
-      setSaleType('product_sale');
-      
-      // Debug: Log the payment data being set
-      console.log('Setting payment data for edit:', {
-        paymentMethod: saleRecord.by || 'cash',
-        paymentImageUrl: saleRecord.paymentImageUrl || '',
-        originalRecord: saleRecord
-      });
-      
-      // START EDIT: Add the original sold quantity back to product
-      // Logic: Product quantity = Current quantity + Original sold quantity
-      try {
+      if (recordType === 'product_sale') {
+        const saleRecord = record as ProductSale;
+        
+        // 🏦 FIND PRODUCT
+        const product = products.find(p => p.name === saleRecord.productName);
+        
+        if (!product) {
+          alert('Product not found. Please refresh the page and try again.');
+          return;
+        }
+        
+        // 🏦 STORE ORIGINAL DATA
+        setOriginalSaleData({ 
+          soldQuantity: saleRecord.soldQuantity, 
+          productId: product._id,
+          productName: saleRecord.productName
+        });
+        
+        // 🏦 STEP 1: RESTORE QUANTITY IMMEDIATELY (like returning money to bank)
+        console.log('🏦 [EDIT] Restoring quantity to product:', saleRecord.soldQuantity);
+        
         const token = localStorage.getItem('token');
-        const restoreResponse = await fetch(`/api/products/update-quantity`, {
+        const restoreResponse = await fetch('/api/products/update-quantity', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
-            productUpdates: [{
-              productId: product._id,
-              quantitySold: -saleRecord.soldQuantity // ADD (+) the original sold quantity back
-            }]
+            productUpdates: [{ productId: product._id, quantitySold: -saleRecord.soldQuantity }] // Negative = add back
           })
         });
 
         if (!restoreResponse.ok) {
           throw new Error('Failed to restore product quantity');
         }
-          
-        // Refresh products to show updated quantities
-        await fetchProducts();
         
-        // Verify the restoration was successful
-        const updatedProducts = await fetch('/api/products', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        }).then(res => res.json());
+        console.log('✅ [EDIT] Quantity restored successfully');
         
-        const updatedProduct = updatedProducts.products.find((p: any) => p._id === product._id);
-        const expectedQuantity = currentProductQuantity + saleRecord.soldQuantity;
-        if (updatedProduct && updatedProduct.quantity !== expectedQuantity) {
-          alert('Warning: Quantity restoration may not have completed correctly. Please refresh and try again.');
-        }
+        // 🏦 CALCULATE UPDATED QUANTITY (since we restored the sold quantity)
+        const updatedQuantity = product.quantity + saleRecord.soldQuantity;
         
-      } catch (error) {
-        console.error('Error restoring product quantity for edit:', error);
-        alert('Failed to restore product quantity. Please try again.');
-        setIsEditMode(false);
-        setEditingRecordId(null);
-        setEditingRecordType(null);
-        return;
+        // 🏦 SET FORM DATA WITH UPDATED QUANTITY
+        setProductSaleData({
+          productId: product._id,
+          productName: saleRecord.productName,
+          soldQuantity: saleRecord.soldQuantity,
+          pricePerUnit: saleRecord.pricePerUnit,
+          availableQuantity: updatedQuantity,
+          status: saleRecord.status || 'pending'
+        });
+        
+        // 🏦 REFRESH PRODUCTS IN BACKGROUND
+        fetchProducts();
+        
+        // 🏦 SET PAYMENT DETAILS
+        setPaymentMethod(saleRecord.by || 'cash');
+        setPaymentImageUrl(saleRecord.paymentImageUrl || '');
+        setSaleType('product_sale');
+        
+        console.log('🏦 [EDIT] Edit mode activated with restored quantity');
+        
+      } else {
+        // Handle withdrawal edit (no quantity involved)
+        const withdrawalRecord = record as Withdrawal;
+        setWithdrawalData({
+          reason: withdrawalRecord.reason,
+          amount: withdrawalRecord.amount
+        });
+        setSaleType('withdrawal');
       }
-    } else {
-      const withdrawalRecord = record as Withdrawal;
-      setWithdrawalData({
-        reason: withdrawalRecord.reason,
-        amount: withdrawalRecord.amount
-      });
-      setSaleType('withdrawal');
+      
+    } catch (error) {
+      console.error('❌ [EDIT] Failed to start edit mode:', error);
+      alert('Failed to start edit mode. Please try again.');
+      setIsEditMode(false);
+      setEditingRecordId(null);
+      setEditingRecordType(null);
+    } finally {
+      setEditLoading(false);
     }
   };
 
+  // 🏦 CANCEL EDIT: Restore quantity back when canceling
   const cancelEdit = async () => {
-    // CANCEL: Subtract the ORIGINAL sold quantity from product
-    // Logic: When we started editing, we ADDED the original quantity back
-    // Now we need to SUBTRACT it to cancel the edit
-    if (isEditMode && editingRecordType === 'product_sale' && originalSaleData?.productId) {
-      try {
+    setCancelLoading(true);
+    
+    try {
+      console.log('🏦 [CANCEL] Canceling edit mode');
+      
+      // 🏦 STEP 1: RESTORE QUANTITY BACK (like taking money back from bank)
+      if (originalSaleData && isEditMode) {
+        console.log('🏦 [CANCEL] Restoring quantity back:', originalSaleData.soldQuantity);
+        
         const token = localStorage.getItem('token');
-        
-        console.log('🔧 Cancel Edit - Rolling back quantity:', {
-          productId: originalSaleData.productId,
-          originalSold: originalSaleData.soldQuantity,
-          action: 'Subtracting original sold quantity back'
-        });
-        
-        const rollbackResponse = await fetch(`/api/products/update-quantity`, {
+        const restoreResponse = await fetch('/api/products/update-quantity', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
-            productUpdates: [{
-              productId: originalSaleData.productId,
-              quantitySold: originalSaleData.soldQuantity // SUBTRACT (-) the original sold quantity
-            }]
+            productUpdates: [{ productId: originalSaleData.productId, quantitySold: originalSaleData.soldQuantity }] // Positive = subtract back
           })
         });
 
-        if (!rollbackResponse.ok) {
-          throw new Error('Failed to rollback product quantity');
+        if (!restoreResponse.ok) {
+          console.error('❌ [CANCEL] Failed to restore quantity back');
+        } else {
+          console.log('✅ [CANCEL] Quantity restored back successfully');
+          await fetchProducts(); // Refresh products
         }
-        
-        // Refresh products to show updated quantities
-        await fetchProducts();
-        
-        console.log('✅ Cancel Edit - Quantity rollback successful');
-        
-      } catch (error) {
-        console.error('Error rolling back product quantity:', error);
-        alert('Failed to cancel edit. Please refresh the page and try again.');
       }
+      
+      // 🏦 STEP 2: RESET FORM DATA
+      setIsEditMode(false);
+      setEditingRecordId(null);
+      setEditingRecordType(null);
+      
+      // Reset form data
+      setProductSaleData({
+        productId: '',
+        productName: '',
+        soldQuantity: 0,
+        pricePerUnit: 0,
+        availableQuantity: 0,
+        status: 'pending'
+      });
+      setWithdrawalData({
+        reason: '',
+        amount: 0
+      });
+      setPaymentMethod('cash');
+      setPaymentImageUrl('');
+      setOriginalSaleData(null);
+      
+      console.log('✅ [CANCEL] Edit mode canceled successfully');
+      
+    } catch (error) {
+      console.error('❌ [CANCEL] Failed to cancel edit:', error);
+      alert('Failed to cancel edit. Please refresh the page and try again.');
+    } finally {
+      setCancelLoading(false);
     }
-    
-    setIsEditMode(false);
-    setEditingRecordId(null);
-    setEditingRecordType(null);
-    
-    // Reset form data
-    setProductSaleData({
-      productId: '',
-      productName: '',
-      soldQuantity: 0,
-      pricePerUnit: 0,
-      availableQuantity: 0,
-      status: 'pending'
-    });
-    setWithdrawalData({
-      reason: '',
-      amount: 0
-    });
-    setPaymentMethod('cash');
-    setPaymentImageUrl('');
-    setOriginalSaleData(null);
   };
 
   // Delete Functions
@@ -818,16 +870,52 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
     });
   };
 
+  // 🏦 DELETE RECORD: Delete sale/withdrawal (like canceling a bank transaction)
   const handleConfirmDelete = async () => {
     if (!deleteModal.record) return;
 
     setDeleting(true);
     try {
+      console.log('🏦 [DELETE] Starting deletion process');
+      
       const token = localStorage.getItem('token');
       
-      // Determine if it's a product sale or withdrawal based on the record structure
+      // 🏦 DETERMINE RECORD TYPE (like checking transaction type)
       if ('productName' in deleteModal.record) {
-        // Delete product sale
+        // 🏦 DELETE PRODUCT SALE: Deposit quantity back to bank
+        const saleRecord = deleteModal.record as ProductSale;
+        
+        console.log('🏦 [DELETE] Deleting product sale:', {
+          productName: saleRecord.productName,
+          soldQuantity: saleRecord.soldQuantity
+        });
+        
+        // 🏦 FIND PRODUCT (like finding account)
+        const product = products.find(p => p.name === saleRecord.productName);
+        
+        if (product) {
+          // 🏦 RESTORE QUANTITY BACK TO PRODUCT
+          console.log('🏦 [DELETE] Restoring quantity back to product:', saleRecord.soldQuantity);
+          
+          const restoreResponse = await fetch('/api/products/update-quantity', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              productUpdates: [{ productId: product._id, quantitySold: -saleRecord.soldQuantity }] // Negative = add back
+            })
+          });
+
+          if (restoreResponse.ok) {
+            console.log('✅ [DELETE] Quantity restored back to product successfully');
+          } else {
+            console.error('❌ [DELETE] Failed to restore quantity back to product');
+          }
+        }
+        
+        // 🏦 DELETE SALE RECORD
         const response = await fetch(`/api/product-sales/${deleteModal.record._id}`, {
           method: 'DELETE',
           headers: {
@@ -838,8 +926,13 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
         if (!response.ok) {
           throw new Error('Failed to delete product sale');
         }
+        
+        console.log('✅ [DELETE] Sale record deleted successfully');
+        
       } else {
-        // Delete withdrawal
+        // 🏦 DELETE WITHDRAWAL (no quantity involved)
+        console.log('🏦 [DELETE] Deleting withdrawal record');
+        
         const response = await fetch(`/api/withdrawals/${deleteModal.record._id}`, {
           method: 'DELETE',
           headers: {
@@ -850,9 +943,11 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
         if (!response.ok) {
           throw new Error('Failed to delete withdrawal');
         }
+        
+        console.log('✅ [DELETE] Withdrawal record deleted successfully');
       }
 
-      // Refresh data
+      // 🏦 REFRESH DATA (like updating bank statement)
       if (showHistory) {
         fetchSalesData();
       }
@@ -862,8 +957,11 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
       if (onSuccess) {
         onSuccess();
       }
+      
+      console.log('🎉 [DELETE] Deletion completed successfully!');
+      
     } catch (error) {
-      console.error('Error deleting record:', error);
+      console.error('❌ [DELETE] Deletion failed:', error);
       alert('Failed to delete record');
     } finally {
       setDeleting(false);
@@ -969,6 +1067,177 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
     const productSalesOnly = filteredData.filter(item => 'productName' in item) as ProductSale[];
     return productSalesOnly.reduce((total, sale) => total + sale.totalSoldMoney, 0);
   };
+
+  // Helper function to refresh available quantity based on current product state
+  const refreshAvailableQuantity = () => {
+    if (productSaleData.productId) {
+      const currentProduct = products.find(p => p._id === productSaleData.productId);
+      if (currentProduct) {
+        // Use the actual product quantity as available quantity
+        const availableQuantity = currentProduct.quantity;
+        
+        setProductSaleData(prev => ({
+          ...prev,
+          availableQuantity: availableQuantity
+        }));
+      }
+    }
+  };
+
+  // Helper function to handle offline quantity management
+  const handleOfflineQuantityUpdate = async (productId: string, quantitySold: number) => {
+    try {
+      console.log('📱 [OFFLINE] Handling quantity update:', { productId, quantitySold });
+      
+      // Store the quantity update in localStorage for offline sync
+      const offlineUpdates = JSON.parse(localStorage.getItem('offlineQuantityUpdates') || '[]');
+      offlineUpdates.push({
+        productId,
+        quantitySold,
+        timestamp: new Date().toISOString(),
+        operation: 'sale'
+      });
+      localStorage.setItem('offlineQuantityUpdates', JSON.stringify(offlineUpdates));
+      
+      // Update local products state immediately for UI consistency
+      setProducts(prevProducts => 
+        prevProducts.map(product => 
+          product._id === productId 
+            ? { 
+                ...product, 
+                quantity: Math.max(0, product.quantity - quantitySold) 
+              }
+            : product
+        )
+      );
+      
+      console.log('📱 [OFFLINE] Quantity update stored locally and UI updated');
+      
+      // Also update the available quantity in the form if this product is selected
+      if (productSaleData.productId === productId) {
+        setProductSaleData(prev => ({
+          ...prev,
+          availableQuantity: Math.max(0, prev.availableQuantity - quantitySold)
+        }));
+      }
+      
+    } catch (error) {
+      console.error('Error handling offline quantity update:', error);
+    }
+  };
+
+  // Helper function to sync offline quantity updates when coming back online
+  const syncOfflineQuantityUpdates = async () => {
+    try {
+      const offlineUpdates = JSON.parse(localStorage.getItem('offlineQuantityUpdates') || '[]');
+      if (offlineUpdates.length === 0) {
+        console.log('📱 [SYNC] No offline quantity updates to sync');
+        return;
+      }
+      
+      console.log('📱 [SYNC] Syncing offline quantity updates:', offlineUpdates);
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('📱 [SYNC] No authentication token found');
+        return;
+      }
+      
+      // Group updates by productId
+      const updatesByProduct = offlineUpdates.reduce((acc: any, update: any) => {
+        if (!acc[update.productId]) {
+          acc[update.productId] = 0;
+        }
+        acc[update.productId] += update.quantitySold;
+        return acc;
+      }, {});
+      
+      console.log('📱 [SYNC] Grouped updates by product:', updatesByProduct);
+      
+      // Send bulk update to server
+      const response = await fetch('/api/products/update-quantity', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          productUpdates: Object.entries(updatesByProduct).map(([productId, quantitySold]) => ({
+            productId,
+            quantitySold
+          }))
+        })
+      });
+      
+      if (response.ok) {
+        // Clear offline updates after successful sync
+        localStorage.removeItem('offlineQuantityUpdates');
+        console.log('✅ [SYNC] Offline quantity updates synced successfully');
+        
+        // Refresh products to get updated quantities
+        await fetchProducts();
+      } else {
+        const errorData = await response.json();
+        console.error('❌ [SYNC] Failed to sync offline quantity updates:', errorData);
+      }
+    } catch (error) {
+      console.error('Error syncing offline quantity updates:', error);
+    }
+  };
+
+  // Monitor online/offline status and sync when coming back online
+  useEffect(() => {
+    const handleOnline = async () => {
+      console.log('🌐 [ONLINE] Connection restored, syncing offline updates...');
+      await syncOfflineQuantityUpdates();
+    };
+
+    window.addEventListener('online', handleOnline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
+  // Helper function to handle edit mode quantity restoration
+  const handleEditModeQuantityRestoration = async (productId: string, originalSoldQuantity: number) => {
+    try {
+      console.log('🔧 [EDIT] Restoring quantity for edit mode:', { productId, originalSoldQuantity });
+      
+      const token = localStorage.getItem('token');
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
+      const restoreResponse = await fetch(`/api/products/update-quantity`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          productUpdates: [{
+            productId: productId,
+            quantitySold: -originalSoldQuantity // ADD (+) the original sold quantity back
+          }]
+        })
+      });
+
+      if (!restoreResponse.ok) {
+        const errorData = await restoreResponse.json();
+        throw new Error(errorData.error || 'Failed to restore product quantity');
+      }
+      
+      console.log('✅ [EDIT] Quantity restoration successful');
+      await fetchProducts();
+      return true;
+    } catch (error) {
+      console.error('❌ [EDIT] Error restoring product quantity:', error);
+      throw error;
+    }
+  };
+
+
 
   return (
     <div className="enhanced-sales-management">
@@ -1084,6 +1353,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
               <span>Offline Mode</span>
             </div>
           )}
+
         </div>
 
         {/* Sale Type Toggle */}
@@ -1154,14 +1424,17 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                           className="field-input"
                           placeholder="e.g., 5, 10, 25"
                           min="0"
-                          max={isEditMode && originalSaleData 
-                            ? productSaleData.availableQuantity + originalSaleData.soldQuantity 
-                            : productSaleData.availableQuantity}
+                          max={getCurrentProductQuantity(productSaleData.productId)}
                           required
                         />
                         <p className="field-hint">
-                          Available: {productSaleData.availableQuantity}
+                          📦 Available: {productSaleData.availableQuantity} units
                         </p>
+                        {productSaleData.soldQuantity > getCurrentProductQuantity(productSaleData.productId) && (
+                          <p className="field-error">
+                            ⚠️ Quantity exceeds available stock. Maximum: {getCurrentProductQuantity(productSaleData.productId)}
+                          </p>
+                        )}
                       </div>
                       
                       <div className="form-field">
@@ -1322,13 +1595,17 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || quantityLoading || editLoading || cancelLoading}
             className={`submit-button ${isOffline ? 'offline' : ''} ${saleType === 'withdrawal' ? 'withdrawal' : ''}`}
           >
-            {loading ? (
+            {loading || quantityLoading || editLoading || cancelLoading ? (
               <div className="button-content">
                 <div className="loading-spinner"></div>
-                {isOffline ? 'Saving Offline...' : (isEditMode ? 'Updating...' : 'Recording Sale...')}
+                {quantityLoading ? '🏦 Processing Bank Transaction...' : 
+                 editLoading ? '🏦 Starting Edit Mode...' :
+                 cancelLoading ? '🏦 Canceling Edit...' :
+                 isOffline ? 'Saving Offline...' : 
+                 (isEditMode ? 'Updating...' : 'Recording Sale...')}
               </div>
             ) : (
               <div className="button-content">
@@ -1343,11 +1620,11 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                       <>
                         <Edit className="w-5 h-5" />
                         Update {saleType === 'product_sale' ? 'Sale' : 'Withdrawal'}
-                  </>
-                ) : (
-                  <>
-                    {saleType === 'product_sale' ? <ShoppingCart className="w-5 h-5" /> : <Receipt className="w-5 h-5" />}
-                    Record {saleType === 'product_sale' ? 'Sale' : 'Withdrawal'}
+                      </>
+                    ) : (
+                      <>
+                        {saleType === 'product_sale' ? <ShoppingCart className="w-5 h-5" /> : <Receipt className="w-5 h-5" />}
+                        Record {saleType === 'product_sale' ? 'Sale' : 'Withdrawal'}
                       </>
                     )}
                   </>
@@ -1361,10 +1638,17 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
             <button
               type="button"
               onClick={cancelEdit}
-              disabled={loading}
+              disabled={loading || quantityLoading || editLoading || cancelLoading}
               className="cancel-button"
             >
-              Cancel Edit
+              {cancelLoading ? (
+                <div className="button-content">
+                  <div className="loading-spinner"></div>
+                  🏦 Canceling...
+                </div>
+              ) : (
+                '❌ Cancel Edit'
+              )}
             </button>
           )}
           
@@ -1891,6 +2175,8 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           margin-top: 0.25rem;
           font-weight: 600;
         }
+
+
 
         .field-textarea {
           resize: vertical;
@@ -2917,6 +3203,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
             padding: 1rem;
           }
         }
+
 
 
       `}</style>

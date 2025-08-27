@@ -1879,9 +1879,6 @@ const AdminDashboardContent = React.memo(() => {
               {paymentMethod === "mobile banking(telebirr)" && (
                 <div className="form-group mt-6">
                   <label className="form-label">Payment Proof (Required)</label>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Please upload a screenshot or photo of your mobile banking payment confirmation. You can take a new photo or select an existing image from your device.
-                  </p>
                   <ImageUpload
                     onImageUpload={setPaymentImageUrl}
                     onImageRemove={() => setPaymentImageUrl("")}

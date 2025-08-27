@@ -375,9 +375,6 @@ export default function ImageUpload({
                   </button>
                 </div>
                 
-                <p className="text-sm text-gray-600">
-                  Drag and drop an image here, or click to select from your device
-                </p>
                 <p className="text-xs text-gray-500">
                   Any image format and size accepted
                 </p>

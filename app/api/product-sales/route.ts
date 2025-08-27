@@ -76,14 +76,9 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      // Check if enough quantity is available
-      if (product.quantity < soldQuantity) {
-        return NextResponse.json(
-          { error: `Insufficient quantity for ${product.name}. Available: ${product.quantity}, Requested: ${soldQuantity}` },
-          { status: 400 }
-        );
-      }
-
+      // Note: Quantity validation is handled in the frontend before this API call
+      // We don't check quantity here to avoid race conditions with frontend quantity updates
+      
       // Create individual product sale record
       const saleData = {
         productName: product.name,
@@ -117,7 +112,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("Product Sales POST error:", error);
     return NextResponse.json(
-      { error: "Failed to record product sale" },
+      { error: error.message || "Failed to record product sale" },
       { status: 500 }
     );
   }

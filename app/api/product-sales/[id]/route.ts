@@ -43,26 +43,8 @@ export async function PUT(
     
     console.log('🛒 Updated sale with status:', updateData.status || 'pending');
 
-    // If there's a quantity difference, update the product quantity using global search
-    if (updateData.quantityDifference && updateData.productId) {
-      console.log('🛒 [EDIT] Updating product quantity by:', updateData.quantityDifference);
-      
-      // Get current product to calculate new quantity
-      const product = await DatabaseService.findProductById(updateData.productId);
-      if (product) {
-        const newQuantity = Math.max(0, product.quantity - updateData.quantityDifference);
-        console.log('🛒 [EDIT] Quantity calculation:', {
-          currentQuantity: product.quantity,
-          quantityDifference: updateData.quantityDifference,
-          newQuantity
-        });
-        
-        await DatabaseService.updateProductQuantity(updateData.productId, newQuantity);
-        console.log('🛒 [EDIT] Product quantity updated successfully');
-      } else {
-        console.error('🛒 [EDIT] Product not found for quantity update:', updateData.productId);
-      }
-    }
+    // Note: Quantity updates are now handled by the frontend before calling this API
+    // This ensures proper rollback if the sale update fails
 
     console.log('Product sale updated successfully:', updatedSale);
 
