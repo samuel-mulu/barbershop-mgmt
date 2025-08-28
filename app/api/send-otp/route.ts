@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sendOTPSMS } from "@/src/services/afromessage";
+import { sendOTPSMS } from "../../../src/services/afromessage";
 
 export async function POST(request: NextRequest) {
   try {
