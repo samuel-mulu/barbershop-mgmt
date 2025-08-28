@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 export async function POST(req: Request) {
   try {
     await connectDB();
-    const { phone, name, password, role, branchId } = await req.json();
+    const { phone, name, password, role, branchId, webauthnCredential } = await req.json();
 
     if (!phone || !name || !password || !role)
       return new Response(JSON.stringify({ error: "All fields are required" }), { status: 400 });
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     const hashed = await bcrypt.hash(password, 10);
     
     // Create user data object with proper typing
-    const userData: { phone: string; name: string; password: string; role: string; branchId?: string } = { 
+    const userData: any = { 
       phone, 
       name, 
       password: hashed, 
@@ -42,11 +42,28 @@ export async function POST(req: Request) {
     if (branchId) {
       userData.branchId = branchId;
     }
+
+    // Optional: attach WebAuthn credential metadata (without verification for now)
+    if (webauthnCredential && typeof webauthnCredential === 'object') {
+      const credId = webauthnCredential.rawId || webauthnCredential.id;
+      if (credId) {
+        userData.webauthnCredentials = [
+          {
+            credentialId: credId,
+            transports: Array.isArray(webauthnCredential.transports) ? webauthnCredential.transports : [],
+            authenticatorAttachment: webauthnCredential.authenticatorAttachment,
+            // aaguid requires parsing attestation; omitted here
+            createdAt: new Date()
+          }
+        ];
+      }
+    }
     
     await User.create(userData);
 
     return new Response(JSON.stringify({ message: "Registered" }), { status: 201 });
-  } catch {
+  } catch (err) {
+    console.error('Register error:', err);
     return new Response(JSON.stringify({ error: "Server error" }), { status: 500 });
   }
 }

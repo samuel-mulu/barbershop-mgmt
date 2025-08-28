@@ -13,7 +13,8 @@ import {
   CheckCircle,
   Shield,
   ChevronDown,
-  UserPlus
+  UserPlus,
+  Fingerprint
 } from "lucide-react";
 
 export default function RegisterPage() {
@@ -31,6 +32,8 @@ export default function RegisterPage() {
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [biometricEnrolled, setBiometricEnrolled] = useState(false);
+  const [webauthnCredential, setWebauthnCredential] = useState<any>(null);
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -120,6 +123,7 @@ export default function RegisterPage() {
     setLoading(true);
     const body: Record<string, unknown> = { phone, password, name, role };
     if (needsBranchId) body.branchId = branchId;
+    if (webauthnCredential) body.webauthnCredential = webauthnCredential; // optional biometric
     
     try {
       const res = await fetch("/api/auth/register", {
@@ -401,6 +405,102 @@ export default function RegisterPage() {
                     </div>
                   </button>
                 ))}
+              </div>
+
+              {/* Optional Biometric Enrollment (primarily for workers) */}
+              <div className="relative">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 mb-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-emerald-800 mb-2">
+                    <Fingerprint className="w-4 h-4" />
+                    Optional biometric sign-in (WebAuthn)
+                  </div>
+                  <div className="text-xs text-emerald-700 mb-3">
+                    Use your device’s fingerprint or biometric to enable passwordless sign-in later. This is optional and recommended for workers.
+                  </div>
+                  <button
+                    type="button"
+                    className={`w-full input flex items-center justify-center gap-2 ${biometricEnrolled ? 'cursor-default' : ''}`}
+                    onClick={async () => {
+                      try {
+                        // Feature detect
+                        if (typeof window === 'undefined' || !('credentials' in navigator) || !(window as any).PublicKeyCredential) {
+                          alert('WebAuthn not supported in this browser/device.');
+                          return;
+                        }
+                        // Build basic registration options
+                        const challenge = new Uint8Array(32);
+                        window.crypto.getRandomValues(challenge);
+                        const userIdBytes = new TextEncoder().encode(phone || name || 'user');
+                        const publicKey: PublicKeyCredentialCreationOptions = {
+                          challenge,
+                          rp: {
+                            name: 'Barbershop Pro',
+                            id: window.location.hostname
+                          },
+                          user: {
+                            id: userIdBytes,
+                            name: phone || `${name.replace(/\s+/g, '').toLowerCase()}@barbershop`,
+                            displayName: name || phone || 'User'
+                          },
+                          pubKeyCredParams: [
+                            { type: 'public-key', alg: -7 }, // ES256
+                            { type: 'public-key', alg: -257 } // RS256
+                          ],
+                          timeout: 60000,
+                          attestation: 'none',
+                          authenticatorSelection: {
+                            userVerification: 'preferred',
+                            residentKey: 'preferred'
+                          }
+                        } as any;
+
+                        const credential = (await navigator.credentials.create({ publicKey })) as PublicKeyCredential | null;
+                        if (!credential) {
+                          alert('Biometric registration was cancelled.');
+                          return;
+                        }
+
+                        const response = credential.response as AuthenticatorAttestationResponse;
+                        const toB64Url = (buf: ArrayBuffer) => {
+                          const bytes = new Uint8Array(buf);
+                          let str = '';
+                          bytes.forEach(b => str += String.fromCharCode(b));
+                          return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+                        };
+
+                        const serialized = {
+                          id: credential.id,
+                          rawId: toB64Url(credential.rawId),
+                          type: credential.type,
+                          response: {
+                            attestationObject: toB64Url(response.attestationObject),
+                            clientDataJSON: toB64Url(response.clientDataJSON)
+                          },
+                          clientExtensionResults: (credential.getClientExtensionResults && credential.getClientExtensionResults()) || {},
+                          transports: (response as any).getTransports ? (response as any).getTransports() : undefined,
+                          authenticatorAttachment: (credential as any).authenticatorAttachment
+                        };
+
+                        setWebauthnCredential(serialized);
+                        setBiometricEnrolled(true);
+                        alert('Biometric registered locally. It will be linked to your account on submit.');
+                      } catch (err) {
+                        console.error('WebAuthn error', err);
+                        alert('Failed to register biometric. Please try again or skip.');
+                      }
+                    }}
+                    disabled={biometricEnrolled}
+                    suppressHydrationWarning
+                  >
+                    <Fingerprint className="w-4 h-4" />
+                    {biometricEnrolled ? 'Biometric registered' : 'Register fingerprint / biometric'}
+                  </button>
+                  {biometricEnrolled && (
+                    <div className="text-xs text-emerald-700 mt-2">
+                      Biometric credential captured. You can proceed to create your account.
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Branch Selection */}

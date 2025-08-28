@@ -62,6 +62,17 @@ interface Withdrawal {
   createdAt: Date;
 }
 
+// New: WebAuthn credential type
+interface WebAuthnCredentialMeta {
+  credentialId: string; // base64url
+  publicKeyJwk?: Record<string, unknown>; // optional JWK if processed server-side
+  publicKeyPem?: string; // optional PEM if processed server-side
+  transports?: string[];
+  authenticatorAttachment?: string;
+  aaguid?: string;
+  createdAt: Date;
+}
+
 interface UserDocument extends mongoose.Document {
   name: string;
   phone: string;
@@ -75,6 +86,8 @@ interface UserDocument extends mongoose.Document {
   products: Product[];
   productSales: ProductSale[];
   withdrawals: Withdrawal[];
+  // New: Optional WebAuthn credentials
+  webauthnCredentials?: WebAuthnCredentialMeta[];
 }
 
 // Simple service operation schema for workers
@@ -165,6 +178,17 @@ const withdrawalSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 }, { _id: true });
 
+// New: WebAuthn credential schema
+const webauthnCredentialSchema = new mongoose.Schema({
+  credentialId: { type: String, index: true }, // base64url
+  publicKeyJwk: { type: Object },
+  publicKeyPem: { type: String },
+  transports: { type: [String], default: [] },
+  authenticatorAttachment: { type: String },
+  aaguid: { type: String },
+  createdAt: { type: Date, default: Date.now }
+}, { _id: true });
+
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   phone: { type: String, unique: true },
@@ -177,7 +201,9 @@ const userSchema = new mongoose.Schema({
   adminServiceOperations: { type: [adminServiceOperationSchema], default: [] }, // Admin service operations
   products: { type: [productSchema], default: [] }, // Products subcollection
   productSales: { type: [productSaleSchema], default: [] }, // Product sales subcollection
-  withdrawals: { type: [withdrawalSchema], default: [] } // Withdrawals subcollection
+  withdrawals: { type: [withdrawalSchema], default: [] }, // Withdrawals subcollection
+  // New
+  webauthnCredentials: { type: [webauthnCredentialSchema], default: [] }
 }, { timestamps: true });
 
 // Ensure subcollections exist for existing documents

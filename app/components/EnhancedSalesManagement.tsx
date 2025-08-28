@@ -137,6 +137,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
 
 
 
+  // Fetch only products that are ready to sell (quantity > 0)
   const fetchProducts = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -146,7 +147,9 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
       
       if (response.ok) {
         const data = await response.json();
-        setProducts(data.products || []);
+        // Only show products that are ready to sell (quantity > 0)
+        const availableProducts = (data.products || []).filter((product: Product) => product.quantity > 0);
+        setProducts(availableProducts);
       }
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -184,6 +187,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
     }
   };
 
+  // Load available products on component mount
   useEffect(() => {
     fetchProducts();
   }, []);
@@ -1108,7 +1112,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                 quantity: Math.max(0, product.quantity - quantitySold) 
               }
             : product
-        )
+        ).filter(product => product.quantity > 0) // Remove products with 0 quantity
       );
       
       console.log('📱 [OFFLINE] Quantity update stored locally and UI updated');
@@ -1174,7 +1178,7 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
         localStorage.removeItem('offlineQuantityUpdates');
         console.log('✅ [SYNC] Offline quantity updates synced successfully');
         
-        // Refresh products to get updated quantities
+        // Refresh products to get updated quantities (will filter out 0 quantity products)
         await fetchProducts();
       } else {
         const errorData = await response.json();
@@ -1347,13 +1351,20 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
               <p className="form-subtitle">{isEditMode ? 'Update sale or withdrawal information' : 'Track your sales and transactions'}</p>
             </div>
           </div>
-          {isOffline && (
-            <div className="offline-badge">
-              <WifiOff className="w-4 h-4" />
-              <span>Offline Mode</span>
-            </div>
-          )}
-
+          <div className="form-header-right">
+            {isOffline && (
+              <div className="offline-badge">
+                <WifiOff className="w-4 h-4" />
+                <span>Offline Mode</span>
+              </div>
+            )}
+            {products.length === 0 && !isEditMode && (
+              <div className="no-products-badge">
+                <Package className="w-4 h-4" />
+                <span>No Products Available</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Sale Type Toggle */}
@@ -1398,12 +1409,18 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                       disabled={isEditMode}
                     >
                       <option value="">Choose a product...</option>
-                      {products.map((product) => (
-                        <option key={product._id} value={product._id}>
-                          {product.name} - {formatCurrency(product.pricePerUnit)} 
-                          (Available: {product.quantity} {product.quantityType})
+                      {products.length === 0 ? (
+                        <option value="" disabled>
+                          No products available for sale (all products have 0 quantity)
                         </option>
-                      ))}
+                      ) : (
+                        products.map((product) => (
+                          <option key={product._id} value={product._id}>
+                            {product.name} - {formatCurrency(product.pricePerUnit)} 
+                            (Available: {product.quantity} {product.quantityType})
+                          </option>
+                        ))
+                      )}
                       {/* Show the product being edited if it's not in the current products list */}
                       {isEditMode && !products.find(p => p._id === productSaleData.productId) && productSaleData.productName && (
                         <option value={productSaleData.productId} disabled>
@@ -1411,6 +1428,11 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
                         </option>
                       )}
                     </select>
+                    {products.length === 0 && (
+                      <div className="field-hint" style={{ color: '#dc2626', fontStyle: 'normal' }}>
+                        ⚠️ No products are currently available for sale. Please add inventory or wait for stock to be replenished.
+                      </div>
+                    )}
                   </div>
 
                   {(productSaleData.productId || (isEditMode && productSaleData.productName)) && (
@@ -1988,6 +2010,13 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           gap: 1rem;
         }
 
+        .form-header-right {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          align-items: flex-end;
+        }
+
         .form-header-content {
           display: flex;
           align-items: center;
@@ -2030,6 +2059,19 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
           font-size: 0.875rem;
           font-weight: 600;
           box-shadow: 0 4px 8px rgba(245, 158, 11, 0.3);
+        }
+
+        .no-products-badge {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+          color: white;
+          padding: 0.5rem 1rem;
+          border-radius: 12px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          box-shadow: 0 4px 8px rgba(239, 68, 68, 0.3);
         }
 
         .sale-type-toggle {
@@ -3137,6 +3179,11 @@ export default function EnhancedSalesManagement({ onSuccess, onDataChange }: Sal
             flex-direction: column;
             align-items: flex-start;
             gap: 1rem;
+          }
+
+          .form-header-right {
+            align-items: flex-start;
+            width: 100%;
           }
 
           .sale-type-toggle {

@@ -1,11 +1,13 @@
 "use client";
 import { useState, useEffect } from "react";
 import { Scissors } from "lucide-react";
+import { Fingerprint } from "lucide-react";
 
 export default function LoginPage() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [bioLoading, setBioLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   // Prevent hydration mismatch
@@ -59,6 +61,99 @@ export default function LoginPage() {
       alert("Login failed. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    try {
+      setBioLoading(true);
+      // Require a phone to locate the account (no password used)
+      if (!phone) {
+        alert('Please enter your phone number to use biometric login.');
+        setBioLoading(false);
+        return;
+      }
+
+      // Start WebAuthn
+      const beginRes = await fetch('/api/auth/webauthn/begin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone })
+      });
+      const beginData = await beginRes.json();
+      if (!beginRes.ok) {
+        alert(beginData.error || 'Biometric login is not available for this account.');
+        setBioLoading(false);
+        return;
+      }
+
+      const b64ToBuf = (b64url: string) => {
+        const base64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes.buffer;
+      };
+
+      const raw = beginData.publicKey as any;
+      const publicKey: PublicKeyCredentialRequestOptions = {
+        ...raw,
+        challenge: b64ToBuf(raw.challenge),
+        allowCredentials: Array.isArray(raw.allowCredentials)
+          ? raw.allowCredentials.map((d: any) => ({
+              ...d,
+              id: b64ToBuf(d.id),
+            }))
+          : undefined,
+      };
+
+      const cred = (await navigator.credentials.get({ publicKey })) as PublicKeyCredential | null;
+      if (!cred) {
+        setBioLoading(false);
+        return; // user cancelled silently
+      }
+
+      const toB64Url = (buf: ArrayBuffer) => {
+        const bytes = new Uint8Array(buf);
+        let str = '';
+        bytes.forEach(b => str += String.fromCharCode(b));
+        return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+      };
+
+      const assertion = {
+        id: cred.id,
+        rawId: toB64Url(cred.rawId),
+        type: cred.type,
+        response: {
+          authenticatorData: toB64Url((cred.response as AuthenticatorAssertionResponse).authenticatorData),
+          clientDataJSON: toB64Url((cred.response as AuthenticatorAssertionResponse).clientDataJSON),
+          signature: toB64Url((cred.response as AuthenticatorAssertionResponse).signature),
+          userHandle: (cred.response as AuthenticatorAssertionResponse).userHandle ? toB64Url((cred.response as AuthenticatorAssertionResponse).userHandle as ArrayBuffer) : null,
+        },
+        clientExtensionResults: cred.getClientExtensionResults ? cred.getClientExtensionResults() : {},
+      };
+
+      const verifyRes = await fetch('/api/auth/webauthn/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, assertion })
+      });
+      const data = await verifyRes.json();
+      if (verifyRes.ok && data.token) {
+        localStorage.setItem("token", data.token);
+        localStorage.setItem("user", JSON.stringify(data.user));
+        if (data.user.branchId) {
+          localStorage.setItem("branchId", data.user.branchId);
+        }
+        const dashboardPath = `/dashboard/${data.user.role}`;
+        window.location.href = dashboardPath;
+      } else {
+        alert(data.error || 'Biometric login failed');
+      }
+    } catch (err) {
+      console.error('Biometric login error', err);
+    } finally {
+      setBioLoading(false);
     }
   };
 
@@ -159,6 +254,18 @@ export default function LoginPage() {
           </button>
         </form>
 
+        {/* Biometric login button (bottom of the card) */}
+        <div className="bio-login-container">
+          <button
+            type="button"
+            className="bio-login-button"
+            onClick={handleBiometricLogin}
+            disabled={bioLoading}
+          >
+            <Fingerprint className="w-4 h-4" />
+            {bioLoading ? 'Waiting for biometric...' : 'Sign in with fingerprint'}
+          </button>
+        </div>
 
 
         <span className="agreement">
@@ -284,6 +391,35 @@ export default function LoginPage() {
           transform: none;
         }
 
+        .bio-login-container {
+          display: flex;
+          justify-content: center;
+          margin-top: 8px;
+        }
+
+        .bio-login-button {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          background: #ffffff;
+          color: #0f172a;
+          border: 2px solid #e2e8f0;
+          padding: 10px 14px;
+          border-radius: 16px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease-in-out;
+        }
+
+        .bio-login-button:hover:not(:disabled) {
+          background: #f8fafc;
+          border-color: #cbd5e1;
+        }
+
+        .bio-login-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
 
 
         .agreement {
