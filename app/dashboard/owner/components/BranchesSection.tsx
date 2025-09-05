@@ -39,11 +39,11 @@ interface Branch {
     name: string;
     barberPrice?: number;
     washerPrice?: number;
+    shareSettings?: {
+      barberShare: number;
+      washerShare: number;
+    };
   }>;
-  shareSettings?: {
-    barberShare: number; // Percentage for barbers (default 50)
-    washerShare: number; // Percentage for washers (default 10)
-  };
   createdAt: string;
 }
 
@@ -70,52 +70,21 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
   const [serviceName, setServiceName] = useState("");
   const [barberPrice, setBarberPrice] = useState("");
   const [washerPrice, setWasherPrice] = useState("");
+  const [serviceBarberShare, setServiceBarberShare] = useState("50");
+  const [serviceWasherShare, setServiceWasherShare] = useState("10");
   // const [creating, setCreating] = useState(false);
   const [expandedBranches, setExpandedBranches] = useState<Set<string>>(new Set());
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
   
-  // Share settings state
-  const [showShareSettings, setShowShareSettings] = useState(false);
-  const [selectedBranchForShares, setSelectedBranchForShares] = useState<Branch | null>(null);
-  const [barberShare, setBarberShare] = useState("50");
-  const [washerShare, setWasherShare] = useState("10");
-  const [loadingShareSettings, setLoadingShareSettings] = useState(false);
-
-  // Fetch current share settings for a branch
-  const fetchShareSettings = async (branchId: string) => {
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-
-      const response = await fetch(`/api/branches/${branchId}/share-settings`, {
-        headers: {
-          "Authorization": `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const shareSettings = await response.json();
-        console.log('🔍 Fetched share settings:', shareSettings);
-        setBarberShare(shareSettings.barberShare.toString());
-        setWasherShare(shareSettings.washerShare.toString());
-      } else {
-        console.error('Failed to fetch share settings');
-        // Use defaults if fetch fails
-        setBarberShare("50");
-        setWasherShare("10");
-      }
-    } catch (error) {
-      console.error('Error fetching share settings:', error);
-      // Use defaults if fetch fails
-      setBarberShare("50");
-      setWasherShare("10");
-    }
-  };
   
   interface Service {
     name: string;
     barberPrice?: number;
     washerPrice?: number;
+    shareSettings?: {
+      barberShare: number;
+      washerShare: number;
+    };
   }
   
   interface EditingService {
@@ -376,6 +345,19 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
 
   const handleAddServiceToBranch = async () => {
     if (!selectedBranch || !serviceName.trim()) return;
+    // Validate per-service shares
+    const barberShareNum = parseInt(serviceBarberShare);
+    const washerShareNum = parseInt(serviceWasherShare);
+    if ((serviceBarberShare && (isNaN(barberShareNum) || barberShareNum < 0 || barberShareNum > 100)) ||
+        (serviceWasherShare && (isNaN(washerShareNum) || washerShareNum < 0 || washerShareNum > 100))) {
+      setModal({
+        isOpen: true,
+        title: "Validation Error",
+        message: "Share percentages must be between 0 and 100",
+        type: "error"
+      });
+      return;
+    }
     
     try {
       const token = localStorage.getItem("token");
@@ -394,6 +376,10 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
           name: serviceName,
           barberPrice: barberPrice ? parseInt(barberPrice) : undefined,
           washerPrice: washerPrice ? parseInt(washerPrice) : undefined,
+          shareSettings: {
+            barberShare: isNaN(barberShareNum) ? 50 : barberShareNum,
+            washerShare: isNaN(washerShareNum) ? 10 : washerShareNum
+          }
         }]
       };
 
@@ -413,6 +399,8 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         setServiceName("");
         setBarberPrice("");
         setWasherPrice("");
+        setServiceBarberShare("50");
+        setServiceWasherShare("10");
         setShowAddService(false);
         mutateBranches();
         setModal({
@@ -442,98 +430,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
     }
   };
 
-  const handleUpdateShareSettings = async () => {
-    if (!selectedBranchForShares) return;
-    
-    // Validate input
-    const barberShareNum = parseInt(barberShare);
-    const washerShareNum = parseInt(washerShare);
-    
-    if (isNaN(barberShareNum) || barberShareNum < 0 || barberShareNum > 100) {
-      setModal({
-        isOpen: true,
-        title: "Validation Error",
-        message: "Barber share must be a number between 0 and 100",
-        type: "error"
-      });
-      return;
-    }
-    
-    if (isNaN(washerShareNum) || washerShareNum < 0 || washerShareNum > 100) {
-      setModal({
-        isOpen: true,
-        title: "Validation Error",
-        message: "Washer share must be a number between 0 and 100",
-        type: "error"
-      });
-      return;
-    }
-    
-    try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setModal({
-          isOpen: true,
-          title: "Authentication Error",
-          message: "No authentication token found. Please log in again.",
-          type: "error"
-        });
-        return;
-      }
-
-      const shareData = {
-        shareSettings: {
-          barberShare: barberShareNum,
-          washerShare: washerShareNum
-        }
-      };
-
-      console.log('Updating share settings for branch:', selectedBranchForShares._id, shareData);
-      
-      const response = await fetch(`/api/branches/${selectedBranchForShares._id}/share-settings`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
-        body: JSON.stringify(shareData),
-      });
-
-      if (response.ok) {
-        console.log('Share settings updated successfully');
-        setShowShareSettings(false);
-        setSelectedBranchForShares(null);
-        setBarberShare("50");
-        setWasherShare("10");
-        mutateBranches();
-        setModal({
-          isOpen: true,
-          title: "Success",
-          message: "Share settings updated successfully!",
-          type: "success"
-        });
-      } else {
-        const errorData = await response.json();
-        console.error('Update share settings failed:', errorData);
-        console.error('Response status:', response.status);
-        console.error('Response headers:', Object.fromEntries(response.headers.entries()));
-        setModal({
-          isOpen: true,
-          title: "Error",
-          message: `Failed to update share settings: ${errorData.error || 'Unknown error'}`,
-          type: "error"
-        });
-      }
-    } catch (error) {
-      console.error("Error updating share settings:", error instanceof Error ? error.message : "Unknown error");
-      setModal({
-        isOpen: true,
-        title: "Error",
-        message: "Error updating share settings",
-        type: "error"
-      });
-    }
-  };
+  // Branch-level share settings removed in favor of per-service share settings
 
   // Show error states
   if (branchesError || usersError) {
@@ -749,6 +646,21 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
                                           </div>
                                         </div>
 
+                                        <div className="detail-row">
+                                          <div className="detail-item">
+                                            <label>Barber Share (%)</label>
+                                            <div className="detail-value">
+                                              {service.shareSettings?.barberShare ?? 50}%
+                                            </div>
+                                          </div>
+                                          <div className="detail-item">
+                                            <label>Washer Share (%)</label>
+                                            <div className="detail-value">
+                                              {service.shareSettings?.washerShare ?? 10}%
+                                            </div>
+                                          </div>
+                                        </div>
+
                                         {/* Action Buttons */}
                                         <div className="service-actions">
                                           <button
@@ -817,50 +729,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
                         </div>
                       </div>
 
-                      {/* Share Settings Section */}
-                      <div className="share-settings-section">
-                        <h4 className="section-title-small">Share Settings</h4>
-                        <div className="share-settings-content">
-                          <div className="share-info">
-                            <div className="share-item">
-                              <div className="share-label">
-                                <Scissors className="w-4 h-4" />
-                                <span>Barber Share</span>
-                              </div>
-                              <div className="share-value">
-                                {branch.shareSettings?.barberShare || 50}%
-                              </div>
-                            </div>
-                            <div className="share-item">
-                              <div className="share-label">
-                                <Droplets className="w-4 h-4" />
-                                <span>Washer Share</span>
-                              </div>
-                              <div className="share-value">
-                                {branch.shareSettings?.washerShare || 10}%
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="share-actions">
-                            <button
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                setSelectedBranchForShares(branch);
-                                setLoadingShareSettings(true);
-                                await fetchShareSettings(branch._id);
-                                setLoadingShareSettings(false);
-                                setShowShareSettings(true);
-                              }}
-                              className="action-button full secondary"
-                              disabled={loadingShareSettings}
-                            >
-                              <Settings className="w-4 h-4 mr-2" />
-                              {loadingShareSettings ? "Loading..." : "Edit Share Settings"}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
+                      {/* Share Settings Section removed: per-service shares are used instead */}
                     </div>
                   </div>
                 )}
@@ -1005,6 +874,37 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
                 }}
               />
             </div>
+
+            <div style={{display: 'flex', gap: '10px', marginBottom: '15px'}}>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={serviceBarberShare}
+                onChange={(e) => setServiceBarberShare(e.target.value)}
+                placeholder="Barber share % (e.g. 50)"
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px'
+                }}
+              />
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={serviceWasherShare}
+                onChange={(e) => setServiceWasherShare(e.target.value)}
+                placeholder="Washer share % (e.g. 10)"
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px'
+                }}
+              />
+            </div>
             
             <div style={{display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
             <button
@@ -1124,6 +1024,63 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
                 }}
               />
             </div>
+
+            <div style={{display: 'flex', gap: '10px', marginBottom: '15px'}}>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={editingService?.service.shareSettings?.barberShare ?? ''}
+                onChange={e => {
+                  const value = e.target.value;
+                  const numeric = value === '' ? undefined : Math.max(0, Math.min(100, parseInt(value)));
+                  setEditingService(prev => prev ? {
+                    ...prev,
+                    service: {
+                      ...prev.service,
+                      shareSettings: {
+                        barberShare: (numeric as number) ?? (prev.service.shareSettings?.barberShare ?? 50),
+                        washerShare: prev.service.shareSettings?.washerShare ?? 10
+                      }
+                    }
+                  } : null);
+                }}
+                placeholder="Barber share %"
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px'
+                }}
+              />
+              <input
+                type="number"
+                min="0"
+                max="100"
+                value={editingService?.service.shareSettings?.washerShare ?? ''}
+                onChange={e => {
+                  const value = e.target.value;
+                  const numeric = value === '' ? undefined : Math.max(0, Math.min(100, parseInt(value)));
+                  setEditingService(prev => prev ? {
+                    ...prev,
+                    service: {
+                      ...prev.service,
+                      shareSettings: {
+                        barberShare: prev.service.shareSettings?.barberShare ?? 50,
+                        washerShare: (numeric as number) ?? (prev.service.shareSettings?.washerShare ?? 10)
+                      }
+                    }
+                  } : null);
+                }}
+                placeholder="Washer share %"
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  border: '1px solid #ccc',
+                  borderRadius: '4px'
+                }}
+              />
+            </div>
             
             <div style={{display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
               <button
@@ -1156,112 +1113,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         </div>
       )}
 
-      {/* Share Settings Modal */}
-      {showShareSettings && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100vw',
-          height: '100vh',
-          backgroundColor: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 9999
-        }}>
-          <div style={{
-            backgroundColor: 'white',
-            padding: '20px',
-            borderRadius: '8px',
-            width: '90%',
-            maxWidth: '400px'
-          }}>
-            <h3 style={{margin: '0 0 10px 0', fontSize: '18px'}}>Edit Share Settings</h3>
-            <p style={{margin: '0 0 15px 0', fontSize: '14px', color: '#666'}}>
-              Set commission percentages for {selectedBranchForShares?.name}.
-            </p>
-            
-            <div style={{marginBottom: '15px'}}>
-              <label style={{display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500'}}>
-                Barber Share (%)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={barberShare}
-                onChange={(e) => setBarberShare(e.target.value)}
-                placeholder="50"
-                style={{
-                  width: '100%',
-                  padding: '8px',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px'
-                }}
-              />
-              <small style={{color: '#666', fontSize: '12px'}}>
-                Percentage of service price that barbers receive
-              </small>
-            </div>
-            
-            <div style={{marginBottom: '15px'}}>
-              <label style={{display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500'}}>
-                Washer Share (%)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                value={washerShare}
-                onChange={(e) => setWasherShare(e.target.value)}
-                placeholder="10"
-                style={{
-                  width: '100%',
-                  padding: '8px',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px'
-                }}
-              />
-              <small style={{color: '#666', fontSize: '12px'}}>
-                Percentage of service price that washers receive
-              </small>
-            </div>
-            
-            <div style={{display: 'flex', gap: '10px', justifyContent: 'flex-end'}}>
-              <button
-                onClick={() => {
-                  setShowShareSettings(false);
-                  setSelectedBranchForShares(null);
-                }}
-                style={{
-                  padding: '8px 16px',
-                  border: '1px solid #ccc',
-                  borderRadius: '4px',
-                  backgroundColor: 'white',
-                  cursor: 'pointer'
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpdateShareSettings}
-                disabled={!barberShare || !washerShare || parseInt(barberShare) < 0 || parseInt(barberShare) > 100 || parseInt(washerShare) < 0 || parseInt(washerShare) > 100}
-                style={{
-                  padding: '8px 16px',
-                  border: 'none',
-                  borderRadius: '4px',
-                  backgroundColor: (!barberShare || !washerShare || parseInt(barberShare) < 0 || parseInt(barberShare) > 100 || parseInt(washerShare) < 0 || parseInt(washerShare) > 100) ? '#ccc' : '#007bff',
-                  color: 'white',
-                  cursor: (!barberShare || !washerShare || parseInt(barberShare) < 0 || parseInt(barberShare) > 100 || parseInt(washerShare) < 0 || parseInt(washerShare) > 100) ? 'not-allowed' : 'pointer'
-                }}
-              >
-                Update Shares
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Branch-level Share Settings Modal removed */}
 
       <style jsx>{`
         .branches-container {

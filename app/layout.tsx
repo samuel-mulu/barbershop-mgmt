@@ -25,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.8, maximum-scale=2, user-scalable=yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />

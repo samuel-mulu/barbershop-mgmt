@@ -271,6 +271,9 @@ export default function LoginPage() {
         <span className="agreement">
           <a href="#">Learn user licence agreement</a>
         </span>
+        <span className="register-link" style={{display: 'block', textAlign: 'center', marginTop: '10px'}}>
+          <a href="/register" style={{color: '#0099ff', fontSize: '11px', textDecoration: 'none'}}>Don't have an account? Register</a>
+        </span>
       </div>
 
       <style jsx>{`

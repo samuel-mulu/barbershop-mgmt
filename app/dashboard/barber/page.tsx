@@ -66,7 +66,27 @@ export default function BarberDashboard() {
   // Fetch service operations for this worker
   const { data: serviceOperations = [], isLoading, error } = useSWR(
     user?._id ? `/api/users/service-operations?userId=${user._id}` : null,
-    fetcher
+    fetcher,
+    {
+      refreshInterval: 15000,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 5000,
+      focusThrottleInterval: 5000,
+    }
+  );
+
+  // Fetch services for branch to read per-service shareSettings and base prices
+  const { data: services = [] } = useSWR(
+    branchId ? `/api/services/${branchId}` : null,
+    fetcher,
+    {
+      refreshInterval: 60000,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 10000,
+      focusThrottleInterval: 5000,
+    }
   );
 
   // Pagination states
@@ -125,9 +145,37 @@ export default function BarberDashboard() {
     setCurrentPage(1); // Reset to first page when changing limit
   }, []);
 
+  // Build quick lookups by service name for shares and base prices
+  const { serviceNameToShare, serviceNameToBasePrice } = useMemo(() => {
+    const shareMap: Record<string, { barberShare?: number; washerShare?: number }> = {};
+    const basePriceMap: Record<string, { barberPrice?: number; washerPrice?: number }> = {};
+    if (Array.isArray(services)) {
+      for (const s of services as any[]) {
+        shareMap[s.name] = {
+          barberShare: s?.shareSettings?.barberShare,
+          washerShare: s?.shareSettings?.washerShare,
+        };
+        basePriceMap[s.name] = {
+          barberPrice: s?.barberPrice,
+          washerPrice: s?.washerPrice,
+        };
+      }
+    }
+    return { serviceNameToShare: shareMap, serviceNameToBasePrice: basePriceMap };
+  }, [services]);
+
   // Calculate totals - only count operations that are NOT finished
   const pendingCount = safeServiceOperations.length;
-  const totalEarnings = safeServiceOperations.reduce((total, op) => total + op.price, 0);
+  const totalEarnings = useMemo(() => {
+    return safeServiceOperations.reduce((total, op) => {
+      const sharePercent = serviceNameToShare[op.name]?.barberShare;
+      const base = serviceNameToBasePrice[op.name]?.barberPrice;
+      const computed = typeof sharePercent === 'number' && typeof base === 'number'
+        ? Math.round((base * sharePercent) / 100)
+        : op.price;
+      return total + computed;
+    }, 0);
+  }, [safeServiceOperations, serviceNameToShare, serviceNameToBasePrice]);
 
   // Show loading if user data is not loaded yet
   if (!user || !branchId) {
@@ -300,8 +348,11 @@ export default function BarberDashboard() {
                 </thead>
                 <tbody>
                 {getPaginatedOperations.map((operation: ServiceOperation, index: number) => {
-                    // Get current share
-                    const barberShare = operation.price; // This is already 50% of original
+                    const sharePercent = serviceNameToShare[operation.name]?.barberShare;
+                    const basePrice = serviceNameToBasePrice[operation.name]?.barberPrice;
+                    const barberShare = typeof sharePercent === 'number' && typeof basePrice === 'number'
+                      ? Math.round((basePrice * sharePercent) / 100)
+                      : operation.price;
                     const paginationInfo = getPaginationInfo;
                     const rowNumber = paginationInfo.startItem + index;
                     

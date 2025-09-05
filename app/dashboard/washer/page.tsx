@@ -74,7 +74,27 @@ export default function WasherDashboard() {
   // Fetch service operations for this washer
   const { data: serviceOperations = [], isLoading, error } = useSWR(
     user?._id ? `/api/users/service-operations?userId=${user._id}` : null,
-    fetcher
+    fetcher,
+    {
+      refreshInterval: 15000,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 5000,
+      focusThrottleInterval: 5000,
+    }
+  );
+
+  // Fetch services for branch to read per-service shareSettings and base prices
+  const { data: services = [] } = useSWR(
+    branchId ? `/api/services/${branchId}` : null,
+    fetcher,
+    {
+      refreshInterval: 60000,
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 10000,
+      focusThrottleInterval: 5000,
+    }
   );
 
   // Pagination states
@@ -133,9 +153,37 @@ export default function WasherDashboard() {
     setCurrentPage(1); // Reset to first page when changing limit
   }, []);
 
+  // Build quick lookups by service name for shares and base prices
+  const { serviceNameToShare, serviceNameToBasePrice } = useMemo(() => {
+    const shareMap: Record<string, { barberShare?: number; washerShare?: number }> = {};
+    const basePriceMap: Record<string, { barberPrice?: number; washerPrice?: number }> = {};
+    if (Array.isArray(services)) {
+      for (const s of services as any[]) {
+        shareMap[s.name] = {
+          barberShare: s?.shareSettings?.barberShare,
+          washerShare: s?.shareSettings?.washerShare,
+        };
+        basePriceMap[s.name] = {
+          barberPrice: s?.barberPrice,
+          washerPrice: s?.washerPrice,
+        };
+      }
+    }
+    return { serviceNameToShare: shareMap, serviceNameToBasePrice: basePriceMap };
+  }, [services]);
+
   // Calculate totals - only count operations that are NOT finished
   const pendingCount = safeServiceOperations.length;
-  const totalEarnings = safeServiceOperations.reduce((total, op) => total + op.price, 0);
+  const totalEarnings = useMemo(() => {
+    return safeServiceOperations.reduce((total, op) => {
+      const sharePercent = serviceNameToShare[op.name]?.washerShare;
+      const base = serviceNameToBasePrice[op.name]?.washerPrice;
+      const computed = typeof sharePercent === 'number' && typeof base === 'number'
+        ? Math.round((base * sharePercent) / 100)
+        : op.price;
+      return total + computed;
+    }, 0);
+  }, [safeServiceOperations, serviceNameToShare, serviceNameToBasePrice]);
 
   // Show loading if user data is not loaded yet
   if (!user || !branchId) {
@@ -240,7 +288,7 @@ export default function WasherDashboard() {
                   <Clock className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="summary-title">Pending Services</h3>
+                  <h3 className="summary-title">ዘይተኸፈለ ስራሕ</h3>
                   <p className="summary-value pending">{pendingCount}</p>
                 </div>
               </div>
@@ -250,8 +298,8 @@ export default function WasherDashboard() {
                   <DollarSign className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="summary-title">Your Earnings (10%)</h3>
-                  <p className="summary-value earnings">${totalEarnings}</p>
+                  <h3 className="summary-title">ዘይተኸፈለ ብር</h3>
+                  <p className="summary-value earnings">{totalEarnings} ብር</p>
                 </div>
               </div>
             </div>
@@ -308,8 +356,11 @@ export default function WasherDashboard() {
                 </thead>
                 <tbody>
                 {getPaginatedOperations.map((operation: ServiceOperation, index: number) => {
-                    // Get original price and current share
-                    const washerShare = operation.price; // This is already 10% of original
+                    const sharePercent = serviceNameToShare[operation.name]?.washerShare;
+                    const basePrice = serviceNameToBasePrice[operation.name]?.washerPrice;
+                    const washerShare = typeof sharePercent === 'number' && typeof basePrice === 'number'
+                      ? Math.round((basePrice * sharePercent) / 100)
+                      : operation.price;
                     const paginationInfo = getPaginationInfo;
                     const rowNumber = paginationInfo.startItem + index;
                     
@@ -323,13 +374,13 @@ export default function WasherDashboard() {
                       </td>
                       <td>
                         <span className="price-tag earnings">
-                            ${washerShare}
+                            {washerShare} ብር
                         </span>
                       </td>
                       <td>
                         <span className="status-badge pending">
                           <Clock className="w-3 h-3" />
-                            {operation.status}
+                          {operation.status === "pending" ? "ዘይተኸፈለ" : operation.status}
                         </span>
                       </td>
                       <td className="text-xs text-slate-500">

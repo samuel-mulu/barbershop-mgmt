@@ -46,7 +46,11 @@ export async function PUT(
       name: service.name,
       barberPrice: service.barberPrice,
       washerPrice: service.washerPrice,
-    };
+      shareSettings: service.shareSettings && typeof service.shareSettings === 'object' ? {
+        barberShare: typeof service.shareSettings.barberShare === 'number' ? service.shareSettings.barberShare : 50,
+        washerShare: typeof service.shareSettings.washerShare === 'number' ? service.shareSettings.washerShare : 10,
+      } : branch.services[serviceIndex].shareSettings || { barberShare: 50, washerShare: 10 },
+    } as any;
 
     await branch.save();
     console.log("Service updated successfully");
@@ -131,19 +135,59 @@ export async function POST(
       if (!service.name) {
         return NextResponse.json({ error: "Service name is required" }, { status: 400 });
       }
+      if (service.shareSettings) {
+        const { barberShare, washerShare } = service.shareSettings;
+        if ((barberShare < 0 || barberShare > 100) || (washerShare < 0 || washerShare > 100)) {
+          return NextResponse.json({ error: "Share settings must be between 0 and 100" }, { status: 400 });
+        }
+      }
     }
 
     // Add services to the branch
-    const branch = await Branch.findByIdAndUpdate(
-      id,
-      { $push: { services: { $each: services } } },
-      { new: true }
-    );
-
+    const branch = await Branch.findById(id);
     if (!branch) {
       console.log("Branch not found for service addition:", id);
       return NextResponse.json({ error: "Branch not found" }, { status: 404 });
     }
+
+    // Normalize incoming services to ensure shareSettings defaults exist
+    const normalizedServices = services.map((s: any) => {
+      // Coerce numeric-like strings to numbers
+      const barberPriceNum = typeof s.barberPrice === 'string' ? parseInt(s.barberPrice, 10) : s.barberPrice;
+      const washerPriceNum = typeof s.washerPrice === 'string' ? parseInt(s.washerPrice, 10) : s.washerPrice;
+      let incomingShare = s.shareSettings && typeof s.shareSettings === 'object' ? s.shareSettings : undefined;
+      const barberShareNum = incomingShare && typeof incomingShare.barberShare === 'string' ? parseInt(incomingShare.barberShare, 10) : incomingShare?.barberShare;
+      const washerShareNum = incomingShare && typeof incomingShare.washerShare === 'string' ? parseInt(incomingShare.washerShare, 10) : incomingShare?.washerShare;
+
+      const hasBarber = typeof barberPriceNum === 'number' && !isNaN(barberPriceNum);
+      const hasWasher = typeof washerPriceNum === 'number' && !isNaN(washerPriceNum);
+      let share = (incomingShare ? { barberShare: barberShareNum, washerShare: washerShareNum } : undefined) as { barberShare?: number; washerShare?: number } | undefined;
+      // If UI forgot to send shareSettings, default based on which roles are priced.
+      if (!share) {
+        // Default split: if both priced, keep existing defaults 50/10; if single role priced, 100% to that role
+        if (hasBarber && hasWasher) {
+          share = { barberShare: 50, washerShare: 10 };
+        } else if (hasBarber) {
+          share = { barberShare: 100, washerShare: 0 };
+        } else if (hasWasher) {
+          share = { barberShare: 0, washerShare: 100 };
+        } else {
+          share = { barberShare: 50, washerShare: 10 };
+        }
+      }
+      return {
+        name: s.name,
+        barberPrice: hasBarber ? barberPriceNum : undefined,
+        washerPrice: hasWasher ? washerPriceNum : undefined,
+        shareSettings: {
+          barberShare: typeof share.barberShare === 'number' ? share.barberShare : 50,
+          washerShare: typeof share.washerShare === 'number' ? share.washerShare : 10,
+        }
+      };
+    });
+
+    branch.services.push(...normalizedServices);
+    await branch.save();
 
     console.log("Services added successfully to branch:", branch._id);
     return NextResponse.json(branch);
