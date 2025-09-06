@@ -31,21 +31,34 @@ export function gregorianToEthiopian(date: Date): {
     ethiopianYear--;
   }
 
-  // Calculate Ethiopian month and day with correct algorithm
-  let ethiopianMonth = month - 8;
-  let ethiopianDay = day - 6; // Fixed offset: was -7, now -6 to correct the one day difference
-
-  if (ethiopianMonth <= 0) {
-    ethiopianMonth += 12;
+  // Calculate days since Ethiopian New Year (September 11)
+  const ethiopianNewYear = new Date(year, 8, 11); // September 11 (month is 0-indexed)
+  if (month < 9 || (month === 9 && day < 11)) {
+    ethiopianNewYear.setFullYear(year - 1);
   }
-
-  if (ethiopianDay <= 0) {
-    ethiopianMonth--;
-    if (ethiopianMonth <= 0) {
-      ethiopianMonth = 12;
-      ethiopianYear--;
-    }
-    ethiopianDay += 30;
+  
+  const daysSinceNewYear = Math.floor((date.getTime() - ethiopianNewYear.getTime()) / (1000 * 60 * 60 * 24));
+  
+  // Calculate Ethiopian month and day
+  let ethiopianMonth = Math.floor(daysSinceNewYear / 30) + 1;
+  let ethiopianDay = (daysSinceNewYear % 30) + 1;
+  
+  // Handle the 13th month (ጳጉሜን) which has only 5 days (6 in leap years)
+  if (ethiopianMonth > 13) {
+    ethiopianMonth = 13;
+    ethiopianDay = Math.min(ethiopianDay, 5); // ጳጉሜን has only 5 days
+  } else if (ethiopianMonth === 13) {
+    // Check if it's a leap year (every 4 years, but with some exceptions)
+    const isLeapYear = (ethiopianYear % 4 === 3);
+    const maxDaysInPagumen = isLeapYear ? 6 : 5;
+    ethiopianDay = Math.min(ethiopianDay, maxDaysInPagumen);
+  }
+  
+  // If we're in the 13th month and day exceeds its limit, move to next year
+  if (ethiopianMonth === 13 && ethiopianDay > (ethiopianYear % 4 === 3 ? 6 : 5)) {
+    ethiopianYear++;
+    ethiopianMonth = 1;
+    ethiopianDay = 1;
   }
 
   // Get weekday (0 = Sunday in both calendars)

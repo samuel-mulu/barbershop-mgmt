@@ -70,9 +70,12 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
   const [serviceName, setServiceName] = useState("");
   const [barberPrice, setBarberPrice] = useState("");
   const [washerPrice, setWasherPrice] = useState("");
-  const [serviceBarberShare, setServiceBarberShare] = useState("50");
-  const [serviceWasherShare, setServiceWasherShare] = useState("10");
-  // const [creating, setCreating] = useState(false);
+  const [serviceBarberShare, setServiceBarberShare] = useState("");
+  const [serviceWasherShare, setServiceWasherShare] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [addingService, setAddingService] = useState(false);
+  const [updatingService, setUpdatingService] = useState(false);
+  const [deletingBranch, setDeletingBranch] = useState<string | null>(null);
   const [expandedBranches, setExpandedBranches] = useState<Set<string>>(new Set());
   const [expandedServices, setExpandedServices] = useState<Set<string>>(new Set());
   
@@ -220,6 +223,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
   const handleUpdateService = async () => {
     if (!editingService) return;
     
+    setUpdatingService(true);
     try {
       const token = localStorage.getItem("token");
       if (!token) {
@@ -276,13 +280,68 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         message: "Error updating service",
         type: "error"
       });
+    } finally {
+      setUpdatingService(false);
+    }
+  };
+
+  const handleDeleteBranch = async (branchId: string) => {
+    if (!confirm("Are you sure you want to delete this branch? This action cannot be undone.")) return;
+    
+    setDeletingBranch(branchId);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setModal({
+          isOpen: true,
+          title: "Authentication Error",
+          message: "No authentication token found. Please log in again.",
+          type: "error"
+        });
+        return;
+      }
+
+      const response = await fetch(`/api/branches/${branchId}`, {
+        method: "DELETE",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        mutateBranches();
+        setModal({
+          isOpen: true,
+          title: "Success",
+          message: "Branch deleted successfully!",
+          type: "success"
+        });
+      } else {
+        const errorData = await response.json();
+        setModal({
+          isOpen: true,
+          title: "Error",
+          message: `Failed to delete branch: ${errorData.error || 'Unknown error'}`,
+          type: "error"
+        });
+      }
+    } catch (error) {
+      console.error("Error deleting branch:", error instanceof Error ? error.message : "Unknown error");
+      setModal({
+        isOpen: true,
+        title: "Error",
+        message: "Error deleting branch",
+        type: "error"
+      });
+    } finally {
+      setDeletingBranch(null);
     }
   };
 
   const handleCreateBranch = async () => {
     if (!branchName.trim()) return;
     
-    // setCreating(true);
+    setCreating(true);
     try {
       const token = localStorage.getItem("token");
       if (!token) {
@@ -339,7 +398,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         type: "error"
       });
     } finally {
-      // setCreating(false);
+      setCreating(false);
     }
   };
 
@@ -359,6 +418,7 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
       return;
     }
     
+    setAddingService(true);
     try {
       const token = localStorage.getItem("token");
       if (!token) {
@@ -399,8 +459,8 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         setServiceName("");
         setBarberPrice("");
         setWasherPrice("");
-        setServiceBarberShare("50");
-        setServiceWasherShare("10");
+        setServiceBarberShare("");
+        setServiceWasherShare("");
         setShowAddService(false);
         mutateBranches();
         setModal({
@@ -427,6 +487,8 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         message: "Error adding service",
         type: "error"
       });
+    } finally {
+      setAddingService(false);
     }
   };
 
@@ -544,6 +606,21 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
                       <Settings className="w-4 h-4" />
                       <span>{branch.services.length}</span>
                     </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteBranch(branch._id);
+                      }}
+                      disabled={deletingBranch === branch._id}
+                      className="delete-branch-btn"
+                      title="Delete Branch"
+                    >
+                      {deletingBranch === branch._id ? (
+                        <div className="loading-spinner-small"></div>
+                      ) : (
+                        <Trash2 className="w-4 h-4" />
+                      )}
+                    </button>
                   </div>
                 </div>
 
@@ -789,17 +866,21 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
             </button>
             <button
               onClick={handleCreateBranch}
-                disabled={!branchName.trim()}
+                disabled={!branchName.trim() || creating}
                 style={{
                   padding: '8px 16px',
                   border: 'none',
                   borderRadius: '4px',
-                  backgroundColor: !branchName.trim() ? '#ccc' : '#007bff',
+                  backgroundColor: (!branchName.trim() || creating) ? '#ccc' : '#007bff',
                   color: 'white',
-                  cursor: !branchName.trim() ? 'not-allowed' : 'pointer'
+                  cursor: (!branchName.trim() || creating) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
                 }}
               >
-                Create
+                {creating && <div className="loading-spinner-small"></div>}
+                {creating ? 'Creating...' : 'Create'}
             </button>
             </div>
           </div>
@@ -921,17 +1002,21 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
             </button>
             <button
               onClick={handleAddServiceToBranch}
-              disabled={!serviceName.trim()}
+              disabled={!serviceName.trim() || addingService}
                 style={{
                   padding: '8px 16px',
                   border: 'none',
                   borderRadius: '4px',
-                  backgroundColor: !serviceName.trim() ? '#ccc' : '#007bff',
+                  backgroundColor: (!serviceName.trim() || addingService) ? '#ccc' : '#007bff',
                   color: 'white',
-                  cursor: !serviceName.trim() ? 'not-allowed' : 'pointer'
+                  cursor: (!serviceName.trim() || addingService) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
                 }}
             >
-              Add Service
+              {addingService && <div className="loading-spinner-small"></div>}
+              {addingService ? 'Adding...' : 'Add Service'}
             </button>
             </div>
           </div>
@@ -1097,16 +1182,21 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
               </button>
               <button
                 onClick={handleUpdateService}
+                disabled={updatingService}
                 style={{
                   padding: '8px 16px',
                   border: 'none',
                   borderRadius: '4px',
-                  backgroundColor: '#007bff',
+                  backgroundColor: updatingService ? '#ccc' : '#007bff',
                   color: 'white',
-                  cursor: 'pointer'
+                  cursor: updatingService ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
                 }}
               >
-                Update Service
+                {updatingService && <div className="loading-spinner-small"></div>}
+                {updatingService ? 'Updating...' : 'Update Service'}
               </button>
             </div>
           </div>
@@ -1671,6 +1761,38 @@ export default function BranchesSection({ ownerId, onViewStaff }: BranchesSectio
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
+        }
+
+        .loading-spinner-small {
+          width: 1rem;
+          height: 1rem;
+          border: 2px solid #e2e8f0;
+          border-top: 2px solid #667eea;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        }
+
+        .delete-branch-btn {
+          background: rgba(239, 68, 68, 0.1);
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          color: #dc2626;
+          padding: 0.5rem;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .delete-branch-btn:hover:not(:disabled) {
+          background: rgba(239, 68, 68, 0.2);
+          transform: translateY(-1px);
+        }
+
+        .delete-branch-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .modal-content {
